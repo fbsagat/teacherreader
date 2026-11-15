@@ -116,6 +116,13 @@ echo "[auto-deploy] $(date -Iseconds) ${LOCAL:0:7} -> ${REMOTE_SHA:0:7}"
 # credenciais da VPS.
 git checkout --quiet --force -B "$BRANCH" "$REMOTE_SHA" || exit 1
 
+# Mudança só de docs/frontend não justifica reconstruir a API.
+CHANGED=$(git diff --name-only "$LOCAL" "$REMOTE_SHA")
+if ! printf '%s\n' "$CHANGED" | grep -qE '^(server\.ts|src/|scripts/|Dockerfile|docker-compose\.vps\.yml|package\.json|package-lock\.json|tsconfig\.json|\.npmrc)'; then
+  echo "[auto-deploy] sem mudança de backend; nada a reconstruir (HEAD em $(git rev-parse --short HEAD))"
+  exit 0
+fi
+
 if bash "$SCRIPT"; then
   echo "[auto-deploy] ok — $(git rev-parse --short HEAD) no ar"
   exit 0
