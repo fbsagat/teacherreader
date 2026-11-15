@@ -6,6 +6,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --legacy-peer-deps
 COPY tsconfig.json server.ts ./
+# O tsc do build alcança este JSON importado pelo serviço do Drive.
+COPY firebase-applet-config.json ./
 COPY src ./src
 # Typecheck e testes rodam no build: uma imagem só existe se o código passa.
 # O deploy automático da VPS usa isso como porteiro (falhou → rollback).
