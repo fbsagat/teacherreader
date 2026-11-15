@@ -1,0 +1,3240 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full w-full overflow-hidden">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ShadowReader - Aprenda Inglês com Seus Livros</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              900: '#312e81',
+            }
+          }
+        }
+      }
+    }
+    // PDF.js worker setup
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  </script>
+  <style>
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    
+    /* Pulsing animations */
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 0.3; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .mic-pulse {
+      animation: pulse-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+  </style>
+</head>
+<body class="h-screen h-[100dvh] w-full bg-slate-900 text-slate-100 font-sans antialiased flex flex-col select-none overflow-hidden">
+
+  <!-- TOP APP BAR -->
+  <header class="bg-slate-900/95 backdrop-blur border-b border-slate-800 px-3 py-2 sm:px-4 sm:py-2.5 shrink-0 flex items-center justify-between z-20 h-13 sm:h-14">
+    <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-brand-600 to-indigo-400 flex items-center justify-center shadow shadow-brand-500/20 text-white font-bold text-sm shrink-0">
+        SR
+      </div>
+      <div class="min-w-0">
+        <h1 class="text-xs sm:text-sm font-bold tracking-tight text-white flex items-center gap-1 truncate">
+          ShadowReader
+        </h1>
+        <p id="bookTitleDisplay" class="text-[10px] sm:text-xs text-slate-400 font-medium truncate max-w-[110px] sm:max-w-[200px]">The Little Prince</p>
+      </div>
+    </div>
+
+    <!-- Right Actions -->
+    <div class="flex items-center gap-1 sm:gap-1.5 shrink-0">
+      <!-- Test Audio Button -->
+      <button id="btnTestAudio" class="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 text-[11px] font-semibold transition active:scale-95" title="Testar e Desbloquear Áudio">
+        <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg>
+        <span class="hidden md:inline">Testar Som</span>
+      </button>
+
+      <!-- Pocket Mode Trigger -->
+      <button id="btnPocketMode" class="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-[11px] font-semibold text-emerald-400 border border-slate-700/80 transition" title="Modo Bolso (Tela Apagada com Áudio Contínuo)">
+        <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+        <span class="hidden md:inline">Modo Bolso</span>
+      </button>
+
+      <!-- Library / Change Book -->
+      <button id="btnLibraryModal" class="p-1.5 sm:p-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 transition" title="Trocar Livro / Carregar PDF">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+      </button>
+
+      <!-- Vocabulary Saved List -->
+      <button id="btnVocabModal" class="p-1.5 sm:p-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 relative transition" title="Caderno de Palavras Salvas">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+        <span id="savedVocabBadge" class="hidden absolute -top-1 -right-1 w-3.5 h-3.5 bg-amber-500 text-[8px] font-bold text-slate-950 rounded-full flex items-center justify-center">0</span>
+      </button>
+
+      <!-- Settings -->
+      <button id="btnSettingsModal" class="p-1.5 sm:p-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 transition" title="Configurações Pedagógicas">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- PROGRESS BAR -->
+  <div class="w-full bg-slate-800 h-1 shrink-0 overflow-hidden">
+    <div id="progressBar" class="bg-gradient-to-r from-brand-500 to-indigo-400 h-full w-0 transition-all duration-300"></div>
+  </div>
+
+  <!-- UPFRONT MICROPHONE PERMISSION BANNER -->
+  <div id="micPermissionBanner" class="bg-gradient-to-r from-indigo-950/90 via-slate-900/90 to-brand-950/90 border-b border-indigo-500/30 px-3 py-1.5 shrink-0 flex items-center justify-between text-xs text-indigo-200 z-10 transition-all duration-300">
+    <div class="flex items-center gap-2 min-w-0">
+      <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0"></span>
+      <span class="text-[11px] font-medium truncate">Ative o microfone antes de iniciar para treinar a pronúncia com fluidez.</span>
+    </div>
+    <button id="btnAllowMicBanner" class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-[11px] shadow shadow-indigo-600/30 transition active:scale-95 shrink-0 ml-2 flex items-center gap-1">
+      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+      Liberar Microfone
+    </button>
+  </div>
+
+  <!-- MAIN STUDY ARENA (SCROLLABLE MIDDLE ZONE) -->
+  <main class="flex-1 min-h-0 overflow-y-auto px-3 py-2.5 sm:px-4 sm:py-3 flex flex-col gap-2.5 max-w-xl mx-auto w-full">
+    
+    <!-- Status & Indicator -->
+    <div class="flex items-center justify-between text-[11px] px-1 shrink-0">
+      <div class="flex items-center gap-2">
+        <span id="stateBadge" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+          <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+          Pronto
+        </span>
+        <span id="streakBadge" class="hidden text-amber-400 font-semibold items-center gap-1">
+          🔥 <span id="streakCount">0</span>
+        </span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-slate-400 font-mono text-[11px]" id="sentenceIndexDisplay">Sentença 1 / 10</span>
+        <span id="bookmarkSavedIndicator" class="inline-flex items-center gap-1 text-[10px] text-emerald-400/90 font-medium bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20" title="Posição de leitura salva automaticamente na memória">
+          <svg class="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+          Salvo
+        </span>
+      </div>
+    </div>
+
+    <!-- MAIN SENTENCE CARDS (COMPACT & RESPONSIVE) -->
+    <div class="flex flex-col gap-2.5 my-auto">
+      
+      <!-- Portuguese Translation Card (Step 1: Comprehension) -->
+      <div id="ptCardContainer" class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-3 sm:p-3.5 shadow-md transition-all duration-300">
+        <div class="flex items-center justify-between mb-1 text-[11px] text-indigo-400 font-semibold tracking-wide uppercase">
+          <span class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+            1. Português (Significado & Contexto)
+          </span>
+          <button id="btnPlayPt" class="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-700 transition" title="Ouvir em português">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path></svg>
+          </button>
+        </div>
+        <p id="ptSentenceText" class="text-sm sm:text-base font-medium text-slate-200 leading-snug">
+          ...
+        </p>
+      </div>
+
+      <!-- English Card (Step 2: Acoustic Model & Target) -->
+      <div id="enCardContainer" class="bg-slate-800/90 backdrop-blur border border-slate-700/80 rounded-xl p-3.5 sm:p-4 shadow-xl relative overflow-hidden transition-all duration-300">
+        <div class="flex items-center justify-between mb-2 text-[11px] text-brand-400 font-semibold tracking-wide uppercase">
+          <div class="flex items-center gap-2">
+            <span class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-brand-500"></span>
+              2. Inglês (Escutar e Pronunciar)
+            </span>
+            <div id="audioWaveIndicator" class="hidden items-center gap-1">
+              <span class="w-1 h-2.5 bg-brand-400 rounded-full animate-bounce"></span>
+              <span class="w-1 h-3.5 bg-brand-400 rounded-full animate-bounce [animation-delay:0.15s]"></span>
+              <span class="w-1 h-2 bg-brand-400 rounded-full animate-bounce [animation-delay:0.3s]"></span>
+              <span class="text-[10px] font-semibold text-brand-300 ml-1">Lendo...</span>
+            </div>
+          </div>
+          <button id="btnPlayEn" class="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-700 transition" title="Ouvir em inglês novamente">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          </button>
+        </div>
+        
+        <p id="enSentenceText" class="text-base sm:text-lg md:text-xl font-bold text-white leading-relaxed tracking-tight break-words select-text">
+          Carregando livro...
+        </p>
+
+        <div class="mt-2.5 flex items-center justify-between text-[10px] text-slate-500 pt-1.5 border-t border-slate-700/50">
+          <span>Toque nas palavras para abrir o dicionário</span>
+          <button id="btnSaveCurrentSentence" class="text-slate-400 hover:text-amber-400 transition flex items-center gap-1 font-medium">
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+            Salvar frase
+          </button>
+        </div>
+      </div>
+
+      <!-- Literal Word-by-Word Translation Card (Step 3: Interlinear Glossing) -->
+      <div id="literalCardContainer" class="bg-slate-800/40 border border-slate-700/50 rounded-xl p-2.5 sm:p-3 shadow-md transition-all duration-300">
+        <div class="flex items-center justify-between mb-1.5 text-[11px] text-amber-400 font-semibold tracking-wide uppercase">
+          <span class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+            3. Tradução Literal (Palavra por Palavra)
+          </span>
+          <span class="text-[10px] text-slate-400 font-normal lowercase">toque para ver dicionário</span>
+        </div>
+        
+        <div id="literalWordsList" class="flex flex-wrap gap-1.5 pt-0.5">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Live Speech & Recognition Feedback Card -->
+      <div id="speechFeedbackContainer" class="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 sm:p-3 min-h-[64px] flex flex-col justify-center">
+        <div class="flex items-center justify-between mb-1 text-[11px]">
+          <span class="text-slate-400 font-medium flex items-center gap-1.5">
+            <span id="micDot" class="w-2 h-2 rounded-full bg-slate-600"></span>
+            <span id="feedbackLabel">Aguardando sua vez...</span>
+          </span>
+          <div class="flex items-center gap-1.5">
+            <button id="btnFinishSpeechEarly" class="hidden px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-semibold transition active:scale-95 shadow" title="Clique para enviar sua fala imediatamente sem esperar a pausa">
+              Concluir Fala &rarr;
+            </button>
+            <span id="scoreBadge" class="hidden text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              0%
+            </span>
+          </div>
+        </div>
+        <p id="userTranscriptText" class="text-xs font-mono text-slate-400 italic">
+          Pressione "Iniciar Treino" para começar.
+        </p>
+        <div id="wordComparisonRow" class="hidden mt-1.5 pt-1.5 border-t border-slate-800 text-[11px] flex flex-wrap gap-1 font-mono"></div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- PINNED BOTTOM ACTION DOCK (FOCUSED PURELY ON PRACTICE & CONTROLS) -->
+  <footer class="bg-slate-900/95 backdrop-blur border-t border-slate-800 px-3 py-2.5 sm:px-4 sm:py-3 shrink-0 w-full z-20">
+    <div class="max-w-xl mx-auto flex items-center justify-between gap-2 sm:gap-3">
+      <!-- Prev Sentence -->
+      <button id="btnPrevSentence" class="p-2.5 sm:p-3 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 transition" title="Sentença Anterior">
+        <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+      </button>
+
+      <!-- Big Center Mic / Start / Stop -->
+      <button id="btnToggleLoop" class="flex-1 py-2.5 sm:py-3 px-4 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 active:scale-[0.98] text-white font-bold text-xs sm:text-sm shadow-lg shadow-brand-500/25 flex items-center justify-center gap-2 transition">
+        <svg id="iconLoopPlay" class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path></svg>
+        <svg id="iconLoopPause" class="w-4 h-4 sm:w-5 sm:h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        <span id="textLoopBtn">Iniciar Treino</span>
+      </button>
+
+      <!-- Manual Mic Record Toggle -->
+      <button id="btnManualMic" class="p-2.5 sm:p-3 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 transition relative" title="Falar Agora">
+        <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+        <span id="micLiveRing" class="hidden absolute inset-0 rounded-xl border-2 border-red-500 mic-pulse pointer-events-none"></span>
+      </button>
+
+      <!-- Next / Skip Sentence -->
+      <button id="btnNextSentence" class="p-2.5 sm:p-3 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 transition" title="Pular / Próxima Sentença">
+        <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+      </button>
+    </div>
+  </footer>
+
+  <!-- POCKET / BLACK SCREEN MODE (SCREEN-OFF SIMULATOR) -->
+  <div id="pocketModeOverlay" class="fixed inset-0 bg-black z-50 hidden flex-col items-center justify-between p-8 text-center select-none cursor-pointer">
+    <div class="pt-6">
+      <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-slate-400 text-xs font-mono">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+        Modo Bolso Ativo (WakeLock Ligado)
+      </span>
+    </div>
+
+    <div class="flex flex-col items-center gap-4 my-auto">
+      <div class="w-16 h-16 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-500">
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+      </div>
+      <div>
+        <p id="pocketStatusText" class="text-sm font-semibold text-slate-300">Ouvindo e lendo normalmente...</p>
+        <p id="pocketSentenceIndex" class="text-xs text-slate-600 font-mono mt-1">Sentença 1 / 10</p>
+      </div>
+      <p class="text-[11px] text-slate-600 max-w-xs mt-2">
+        A tela está em brilho preto para economizar bateria enquanto o ciclo de fala e escuta continua pelos seus fones.
+      </p>
+    </div>
+
+    <div class="pb-6">
+      <button id="btnExitPocketMode" class="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold border border-slate-800">
+        Toque para Voltar à Tela Normal
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL: SETTINGS -->
+  <div id="modalSettings" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-40 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-5 max-h-[90vh] overflow-y-auto shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <svg class="w-4 h-4 text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path></svg>
+          Configurações Pedagógicas
+        </h3>
+        <button class="close-modal text-slate-400 hover:text-white p-1 rounded-lg">✕</button>
+      </div>
+
+      <div class="mt-4 space-y-4 text-xs">
+        
+        <!-- TTS Engine Selector -->
+        <div>
+          <label class="block font-semibold text-slate-300 mb-1.5">Motor de Voz (TTS)</label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex flex-col p-2.5 rounded-xl border border-slate-800 bg-slate-800/50 cursor-pointer hover:border-brand-500/50 has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/10">
+              <input type="radio" name="ttsEngine" value="auto" checked class="hidden">
+              <span class="font-bold text-slate-200">Automático</span>
+              <span class="text-[10px] text-slate-400 mt-0.5">Nativo com fallback nuvem</span>
+            </label>
+            <label class="flex flex-col p-2.5 rounded-xl border border-slate-800 bg-slate-800/50 cursor-pointer hover:border-brand-500/50 has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/10">
+              <input type="radio" name="ttsEngine" value="online" class="hidden">
+              <span class="font-bold text-slate-200">Áudio Nuvem</span>
+              <span class="text-[10px] text-slate-400 mt-0.5">Garante som se o navegador falhar</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Audio Flow -->
+        <div>
+          <label class="block font-semibold text-slate-300 mb-1.5">Ordem de Leitura e Áudio</label>
+          <div class="grid grid-cols-1 gap-2">
+            <!-- Mode Desafio (Requested Feature) -->
+            <label class="flex flex-col p-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 cursor-pointer hover:border-amber-400 has-[:checked]:border-amber-400 has-[:checked]:ring-1 has-[:checked]:ring-amber-400">
+              <input type="radio" name="audioFlow" value="challenge" class="hidden">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-amber-300 flex items-center gap-1.5">
+                  🏆 Modo Desafio (Oculta Tradução até Acerto)
+                </span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200 font-bold border border-amber-500/30">Desafio</span>
+              </div>
+              <span class="text-[10px] text-slate-300 mt-1">
+                Mostra o inglês primeiro e ouve a pronúncia. A tradução em português fica oculta até você falar a frase corretamente em inglês!
+              </span>
+            </label>
+
+            <label class="flex flex-col p-2.5 rounded-xl border border-slate-800 bg-slate-800/50 cursor-pointer hover:border-brand-500/50 has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/10">
+              <input type="radio" name="audioFlow" value="pt_first" checked class="hidden">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-slate-200">1. Português &rarr; 2. Inglês &rarr; 3. Falar (Recomendado)</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-300 font-semibold">Padrão</span>
+              </div>
+              <span class="text-[10px] text-slate-400 mt-1">Entenda o contexto em português primeiro; ouça a pronúncia em inglês logo em seguida e repita com ela fresca na memória.</span>
+            </label>
+            <label class="flex flex-col p-2.5 rounded-xl border border-slate-800 bg-slate-800/50 cursor-pointer hover:border-brand-500/50 has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/10">
+              <input type="radio" name="audioFlow" value="en_first" class="hidden">
+              <span class="font-bold text-slate-200">1. Inglês &rarr; 2. Português &rarr; 3. Falar</span>
+              <span class="text-[10px] text-slate-400 mt-0.5">Ouve o inglês original primeiro, confere a tradução e depois realiza o teste.</span>
+            </label>
+            <label class="flex flex-col p-2.5 rounded-xl border border-slate-800 bg-slate-800/50 cursor-pointer hover:border-brand-500/50 has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/10">
+              <input type="radio" name="audioFlow" value="sandwich" class="hidden">
+              <span class="font-bold text-slate-200">Sanduíche: EN &rarr; PT &rarr; EN &rarr; Falar</span>
+              <span class="text-[10px] text-slate-400 mt-0.5">Ouve em inglês, entende a tradução e reforça em inglês mais uma vez antes de falar.</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- On Error Action -->
+        <div>
+          <label class="block font-semibold text-slate-300 mb-1.5">Ao Errar a Pronúncia</label>
+          <div class="space-y-1.5">
+            <label class="flex items-center gap-2 text-slate-300">
+              <input type="checkbox" id="cfgRepeatOnError" checked class="rounded border-slate-700 bg-slate-800 text-brand-600">
+              <span>Sempre repetir a sentença em inglês</span>
+            </label>
+            <label class="flex items-center gap-2 text-slate-300">
+              <input type="checkbox" id="cfgSlowdownOnError" checked class="rounded border-slate-700 bg-slate-800 text-brand-600">
+              <span>Reduzir velocidade (-15%) na repetição</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- On Success Review Action (Requested Feature) -->
+        <div class="pt-2 border-t border-slate-800/80">
+          <label class="block font-semibold text-amber-300 mb-1 flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            Ao Acertar a Pronúncia
+          </label>
+          <label class="flex items-start gap-2 text-slate-200 cursor-pointer p-2 rounded-xl bg-slate-800/60 border border-slate-700/60 hover:border-amber-400/50 transition">
+            <input type="checkbox" id="cfgReadWordsOnSuccess" class="rounded border-slate-700 bg-slate-800 text-amber-500 mt-0.5">
+            <div>
+              <span class="font-bold text-xs text-white">Ler novamente cada palavra e sua tradução</span>
+              <p class="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+                Após você acertar a frase, o app lê pausadamente cada palavra em inglês seguida do seu significado em português, iluminando cada termo no card literal.
+              </p>
+            </div>
+          </label>
+        </div>
+
+        <!-- Strictness / Threshold -->
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <label class="font-semibold text-slate-300">Tolerância de Precisão</label>
+            <span id="cfgThresholdDisplay" class="font-mono text-brand-400">75% (Equilibrado)</span>
+          </div>
+          <input type="range" id="cfgThresholdSlider" min="50" max="95" step="5" value="75" class="w-full accent-brand-500">
+          <div class="flex justify-between text-[10px] text-slate-500 mt-1">
+            <span>Fácil (50%)</span>
+            <span>Equilibrado (75%)</span>
+            <span>Rigoroso (95%)</span>
+          </div>
+        </div>
+
+        <!-- Dual Independent Audio Speeds (Calibrated for English & Portuguese) -->
+        <div class="space-y-3 pt-1 border-t border-slate-800/80">
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="font-semibold text-slate-300 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-brand-500"></span>
+                Velocidade do Inglês (TTS)
+              </label>
+              <span id="cfgSpeedEnDisplay" class="font-mono text-brand-400 font-bold">0.85x (Clara & Cadenciada)</span>
+            </div>
+            <input type="range" id="cfgSpeedEnSlider" min="0.65" max="1.20" step="0.05" value="0.85" class="w-full accent-brand-500">
+            <div class="flex justify-between text-[10px] text-slate-500 mt-0.5">
+              <span>Lenta (0.65x)</span>
+              <span>Cadenciada (0.85x)</span>
+              <span>Nativa rápida (1.20x)</span>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="font-semibold text-slate-300 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+                Velocidade do Português (TTS)
+              </label>
+              <span id="cfgSpeedPtDisplay" class="font-mono text-indigo-400 font-bold">1.15x (Natural & Fluida)</span>
+            </div>
+            <input type="range" id="cfgSpeedPtSlider" min="0.80" max="1.40" step="0.05" value="1.15" class="w-full accent-indigo-500">
+            <div class="flex justify-between text-[10px] text-slate-500 mt-0.5">
+              <span>Moderada (0.80x)</span>
+              <span>Natural fluida (1.15x)</span>
+              <span>Rápida (1.40x)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Audio Cues & Beeps -->
+        <div class="pt-2 border-t border-slate-800 space-y-1.5">
+          <label class="flex items-center gap-2 text-slate-300">
+            <input type="checkbox" id="cfgAudioBeeps" checked class="rounded border-slate-700 bg-slate-800 text-brand-600">
+            <span>Bips sonoros para fone (Ouvir / Falar / Acerto)</span>
+          </label>
+          <label class="flex items-center gap-2 text-slate-300">
+            <input type="checkbox" id="cfgAutoHandsFree" class="rounded border-slate-700 bg-slate-800 text-brand-600">
+            <span>Modo Mãos Livres (Avança após 8s se não falar)</span>
+          </label>
+        </div>
+
+      </div>
+
+      <div class="mt-5 pt-3 border-t border-slate-800 flex justify-end">
+        <button class="close-modal px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs">
+          Salvar e Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: LIBRARY & PDF UPLOAD -->
+  <div id="modalLibrary" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-40 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-5 max-h-[90vh] overflow-y-auto shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <svg class="w-4 h-4 text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+          Biblioteca de Livros & Upload
+        </h3>
+        <button class="close-modal text-slate-400 hover:text-white p-1 rounded-lg">✕</button>
+      </div>
+
+      <div class="mt-4 space-y-4">
+        
+        <!-- Saved User Books (Resume Reading Section) -->
+        <div id="savedBooksSection" class="hidden">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+              Meus Livros Salvos (Continuar Lendo)
+            </h4>
+            <span id="savedBooksCountBadge" class="text-[10px] text-slate-400 font-mono">0 livros</span>
+          </div>
+          <div class="space-y-2 max-h-56 overflow-y-auto pr-1" id="savedBooksList">
+            <!-- Injected by JS: Saved books with progress & resume buttons -->
+          </div>
+          <div class="my-3 border-b border-slate-800"></div>
+        </div>
+
+        <!-- PDF Upload Zone -->
+        <div class="border-2 border-dashed border-slate-700 hover:border-brand-500 rounded-2xl p-5 text-center cursor-pointer transition bg-slate-800/30 group" id="pdfDropZone">
+          <input type="file" id="pdfFileInput" accept="application/pdf" class="hidden">
+          <svg class="w-8 h-8 mx-auto text-slate-500 group-hover:text-brand-400 mb-2 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+          <p class="text-sm font-semibold text-slate-200">Carregar Livro em PDF (.pdf)</p>
+          <p class="text-xs text-slate-400 mt-1">Arraste ou clique para selecionar seu livro em inglês</p>
+          <p id="pdfLoadingStatus" class="text-xs text-brand-400 font-medium mt-2 hidden">Processando páginas do PDF...</p>
+        </div>
+
+        <!-- Sample Books -->
+        <div>
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Livros Pré-Carregados (Testar Agora)</h4>
+          <div class="space-y-2" id="sampleBooksList">
+            <!-- Injected by JS -->
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: SAVED VOCABULARY -->
+  <div id="modalVocab" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-40 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-5 max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+          Caderno de Frases & Vocabulário
+        </h3>
+        <button class="close-modal text-slate-400 hover:text-white p-1 rounded-lg">✕</button>
+      </div>
+
+      <div class="mt-4 flex-1 overflow-y-auto space-y-2" id="savedVocabList">
+        <p class="text-xs text-slate-500 text-center py-6">Nenhuma frase salva ainda. Clique em "Salvar frase" ou toque em palavras para adicioná-las aqui.</p>
+      </div>
+
+      <div class="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center text-xs shrink-0">
+        <button id="btnClearVocab" class="text-rose-400 hover:text-rose-300">Limpar Tudo</button>
+        <button id="btnExportVocab" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold border border-slate-700">Exportar (TXT)</button>
+      </div>
+    </div>
+  </div>
+
+
+
+
+  <!-- MODAL: BOOK COMPLETION CELEBRATION -->
+  <div id="modalBookCompleted" class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 shadow-2xl text-center relative overflow-hidden">
+      <div class="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-300 flex items-center justify-center text-slate-950 font-black text-2xl shadow-lg shadow-amber-500/20 mb-3">
+        🏆
+      </div>
+      <h3 class="text-lg font-extrabold text-white">Livro Concluído!</h3>
+      <p id="completionBookTitle" class="text-xs text-brand-300 font-semibold mt-0.5">The Little Prince</p>
+      <p class="text-xs text-slate-300 mt-2 leading-relaxed">
+        Parabéns! Você completou todas as sentenças e treinou ativamente sua compreensão e pronúncia em inglês.
+      </p>
+
+      <div class="grid grid-cols-2 gap-2 my-4 text-left">
+        <div class="p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/60">
+          <span class="text-[10px] text-slate-400 block font-semibold">Total de Sentenças</span>
+          <span id="completionTotalSentences" class="text-sm font-bold text-white">100%</span>
+        </div>
+        <div class="p-2.5 rounded-xl bg-slate-800/80 border border-slate-700/60">
+          <span class="text-[10px] text-slate-400 block font-semibold">Vocabulário Salvo</span>
+          <span id="completionVocabCount" class="text-sm font-bold text-amber-400">0 termos</span>
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-2 pt-2 border-t border-slate-800 text-xs">
+        <button id="btnRestartBookFromZero" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-bold transition shadow">
+          Reler Este Livro do Início
+        </button>
+        <button id="btnChooseAnotherBook" class="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold border border-slate-700 transition">
+          Escolher Outro Livro
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: WORD DICTIONARY (DETAILED LOOKUP & PRONUNCIATION) -->
+  <div id="modalDictionary" class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-4 sm:p-5 shadow-2xl relative">
+      <div class="flex items-start justify-between pb-3 border-b border-slate-800">
+        <div>
+          <div class="flex items-center gap-2">
+            <h3 id="dictWordTitle" class="text-lg sm:text-xl font-extrabold text-white">word</h3>
+            <button id="btnDictSpeakWord" class="p-1 rounded-lg bg-brand-500/20 hover:bg-brand-500/30 text-brand-300 transition" title="Ouvir pronúncia">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg>
+            </button>
+          </div>
+          <p id="dictPhonetic" class="text-xs font-mono text-slate-400 mt-0.5">/wɜːrd/</p>
+        </div>
+        <button id="btnCloseDictModal" class="text-slate-400 hover:text-white p-1 rounded-lg">✕</button>
+      </div>
+
+      <div class="py-3 space-y-2.5 text-xs">
+        <div>
+          <span id="dictPartOfSpeech" class="inline-block px-2 py-0.5 rounded-full bg-slate-800 text-brand-300 font-semibold text-[10px] uppercase tracking-wider border border-slate-700">Substantivo</span>
+        </div>
+
+        <div>
+          <h4 class="text-[11px] font-bold text-amber-400 uppercase tracking-wide">Tradução Direta</h4>
+          <p id="dictTranslation" class="text-sm font-semibold text-slate-100 mt-0.5">palavra, termo</p>
+        </div>
+
+        <div>
+          <h4 class="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Significado & Uso</h4>
+          <p id="dictDefinition" class="text-slate-300 leading-relaxed mt-0.5">Elemento da linguagem com significado autônomo.</p>
+        </div>
+
+        <div id="dictExampleContainer" class="p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/60">
+          <span class="text-[10px] text-slate-500 font-semibold block mb-0.5">Exemplo no Livro:</span>
+          <p id="dictExample" class="italic text-slate-300 text-xs">"In the book it said..."</p>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
+        <button id="btnDictSaveVocab" class="flex-1 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-semibold flex items-center justify-center gap-1.5 transition">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"></path></svg>
+          Salvar no Caderno
+        </button>
+        <button id="btnDictCloseBottom" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold">
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: FALLBACK SPEECH INPUT (CANVAS / NO-MIC SANDBOX) -->
+  <div id="modalFallbackSpeech" class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-5 shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+          <svg class="w-4 h-4 text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+          Entrada de Fala / Simulação de Microfone
+        </h3>
+      </div>
+      <p class="text-xs text-slate-400 mt-2">
+        O navegador ou ambiente atual não possui permissão de gravação direta. Digite ou use a simulação abaixo:
+      </p>
+      <p id="fallbackTargetText" class="text-xs font-mono text-brand-300 bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/60 mt-2 select-text"></p>
+      <input type="text" id="fallbackSpokenInput" placeholder="Digite o que você falou em inglês..." class="w-full mt-3 px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-brand-500">
+      <div class="mt-4 flex gap-2">
+        <button id="btnFallbackExact" class="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 border border-slate-700">Simular Acerto (100%)</button>
+        <button id="btnFallbackSubmit" class="flex-1 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-xs font-semibold text-white">Validar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script>
+
+    // --- COMPREHENSIVE BILINGUAL DICTIONARY & GLOSSARY DATABASE ---
+    const DICT_DB = {
+      // Core pronouns, auxiliaries, common verbs & descriptors
+      'he': { pt: 'ele', pos: 'Pronome pessoal', ipa: '/hiː/', def: 'Pessoa do sexo masculino mencionada anteriormente.' },
+      'she': { pt: 'ela', pos: 'Pronome pessoal', ipa: '/ʃiː/', def: 'Pessoa do sexo feminino mencionada anteriormente.' },
+      'we': { pt: 'nós', pos: 'Pronome pessoal', ipa: '/wiː/', def: 'Primeira pessoa do plural; eu e outros.' },
+      'you': { pt: 'você / tu / vocês', pos: 'Pronome', ipa: '/juː/', def: 'A pessoa com quem se fala diretamente.' },
+      'his': { pt: 'dele / seu', pos: 'Pronome possessivo', ipa: '/hɪz/', def: 'Pertencente a ele.' },
+      'him': { pt: 'o / lhe / a ele', pos: 'Pronome oblíquo', ipa: '/hɪm/', def: 'Forma oblíqua de ele.' },
+      'their': { pt: 'deles / delas / seu', pos: 'Pronome possessivo', ipa: '/ðɛər/', def: 'Pertencente a eles ou a elas.' },
+      'my': { pt: 'meu / minha', pos: 'Pronome possessivo', ipa: '/maɪ/', def: 'Pertencente à primeira pessoa.' },
+      'your': { pt: 'seu / sua / teu', pos: 'Pronome possessivo', ipa: '/jɔːr/', def: 'Pertencente à pessoa com quem se fala.' },
+      'our': { pt: 'nosso / nossa', pos: 'Pronome possessivo', ipa: '/ˈaʊ.ər/', def: 'Pertencente a nós.' },
+      'its': { pt: 'dele / dela (coisa)', pos: 'Pronome possessivo', ipa: '/ɪts/', def: 'Pertencente a um animal, objeto ou entidade neutra.' },
+      'is': { pt: 'é / está', pos: 'Verbo', ipa: '/ɪz/', def: 'Forma presente do verbo to be para 3ª pessoa.' },
+      'were': { pt: 'eram / estavam / fomos', pos: 'Verbo (passado)', ipa: '/wɜːr/', def: 'Forma do passado plural ou segunda pessoa do verbo to be.' },
+      'been': { pt: 'sido / estado', pos: 'Particípio', ipa: '/biːn/', def: 'Particípio passado do verbo to be.' },
+      'have': { pt: 'ter / haver', pos: 'Verbo', ipa: '/hæv/', def: 'Possuir, conter ou experimentar.' },
+      'had': { pt: 'tinha / teve / havia', pos: 'Verbo (passado)', ipa: '/hæd/', def: 'Passado do verbo to have.' },
+      'has': { pt: 'tem / possui', pos: 'Verbo', ipa: '/hæz/', def: 'Terceira pessoa do singular do verbo to have.' },
+      'can': { pt: 'pode / consegue', pos: 'Verbo modal', ipa: '/kæn/', def: 'Expressa capacidade, habilidade ou permissão.' },
+      'could': { pt: 'podia / poderia', pos: 'Verbo modal', ipa: '/kʊd/', def: 'Passado ou condicional de can.' },
+      'will': { pt: 'vai / haverá (futuro)', pos: 'Verbo auxiliar', ipa: '/wɪl/', def: 'Indica tempo futuro ou determinação.' },
+      'would': { pt: 'faria / iria', pos: 'Verbo auxiliar', ipa: '/wʊd/', def: 'Indica condicional ou hábito no passado.' },
+      'must': { pt: 'deve / tem que', pos: 'Verbo modal', ipa: '/mʌst/', def: 'Indica obrigação estrita ou forte dedução lógica.' },
+      'go': { pt: 'ir', pos: 'Verbo', ipa: '/ɡoʊ/', def: 'Deslocar-se de um ponto para outro.' },
+      'went': { pt: 'foi / foram', pos: 'Verbo (passado)', ipa: '/wɛnt/', def: 'Passado irregular do verbo to go.' },
+      'come': { pt: 'vir / chegar', pos: 'Verbo', ipa: '/kʌm/', def: 'Mover-se em direção a quem fala.' },
+      'came': { pt: 'veio / chegaram', pos: 'Verbo (passado)', ipa: '/keɪm/', def: 'Passado do verbo to come.' },
+      'see': { pt: 'ver / enxergar', pos: 'Verbo', ipa: '/siː/', def: 'Perceber com a visão.' },
+      'know': { pt: 'saber / conhecer', pos: 'Verbo', ipa: '/noʊ/', def: 'Ter conhecimento ou familiaridade com algo.' },
+      'knew': { pt: 'sabia / conhecia', pos: 'Verbo (passado)', ipa: '/njuː/', def: 'Passado do verbo to know.' },
+      'take': { pt: 'pegar / levar / tomar', pos: 'Verbo', ipa: '/teɪk/', def: 'Segurar com as mãos ou conduzir algo.' },
+      'took': { pt: 'pegou / levou', pos: 'Verbo (passado)', ipa: '/tʊk/', def: 'Passado do verbo to take.' },
+      'give': { pt: 'dar / doar', pos: 'Verbo', ipa: '/ɡɪv/', def: 'Conceder algo a outrem sem contrapartida.' },
+      'gave': { pt: 'deu / entregou', pos: 'Verbo (passado)', ipa: '/ɡeɪv/', def: 'Passado do verbo to give.' },
+      'make': { pt: 'fazer / criar', pos: 'Verbo', ipa: '/meɪk/', def: 'Produzir ou fabricar algo.' },
+      'made': { pt: 'fez / feito', pos: 'Verbo (passado)', ipa: '/meɪd/', def: 'Passado do verbo to make.' },
+      'tell': { pt: 'contar / dizer a', pos: 'Verbo', ipa: '/tɛl/', def: 'Narrar ou informar algo a alguém.' },
+      'told': { pt: 'contou / disse', pos: 'Verbo (passado)', ipa: '/toʊld/', def: 'Passado do verbo to tell.' },
+      'feel': { pt: 'sentir', pos: 'Verbo', ipa: '/fiːl/', def: 'Experimentar uma sensação física ou emoção.' },
+      'felt': { pt: 'sentiu / sentido', pos: 'Verbo (passado)', ipa: '/fɛlt/', def: 'Passado do verbo to feel.' },
+      'find': { pt: 'encontrar / achar', pos: 'Verbo', ipa: '/faɪnd/', def: 'Localizar algo que se buscava ou desconhecia.' },
+      'found': { pt: 'encontrou / achou', pos: 'Verbo (passado)', ipa: '/faʊnd/', def: 'Passado do verbo to find.' },
+      'think': { pt: 'pensar / achar', pos: 'Verbo', ipa: '/θɪŋk/', def: 'Exercer o raciocínio ou ter uma opinião.' },
+      'leave': { pt: 'partir / deixar', pos: 'Verbo', ipa: '/liːv/', def: 'Sair de um local ou abandonar algo.' },
+      'left': { pt: 'partiu / deixou / esquerda', pos: 'Verbo / Adjetivo', ipa: '/lɛft/', def: 'Passado de leave; lado oposto ao direito.' },
+      'time': { pt: 'tempo / hora / vez', pos: 'Substantivo', ipa: '/taɪm/', def: 'Duração contínua dos acontecimentos.' },
+      'day': { pt: 'dia', pos: 'Substantivo', ipa: '/deɪ/', def: 'Período de vinte e quatro horas ou de luz solar.' },
+      'people': { pt: 'pessoas / povo', pos: 'Substantivo (pl.)', ipa: '/ˈpiː.pəl/', def: 'Conjunto de seres humanos.' },
+      'way': { pt: 'caminho / jeito / forma', pos: 'Substantivo', ipa: '/weɪ/', def: 'Trajeto ou modo de agir.' },
+      'world': { pt: 'mundo / planeta', pos: 'Substantivo', ipa: '/wɜːrld/', def: 'A Terra com todos os seus habitantes.' },
+      'life': { pt: 'vida', pos: 'Substantivo', ipa: '/laɪf/', def: 'Existência dos seres vivos.' },
+      'man': { pt: 'homem', pos: 'Substantivo', ipa: '/mæn/', def: 'Ser humano adulto do sexo masculino.' },
+      'woman': { pt: 'mulher', pos: 'Substantivo', ipa: '/ˈwʊm.ən/', def: 'Ser humano adulto do sexo feminino.' },
+      'child': { pt: 'criança / filho', pos: 'Substantivo', ipa: '/tʃaɪld/', def: 'Ser humano em fase de infância.' },
+      'children': { pt: 'crianças / filhos', pos: 'Substantivo (pl.)', ipa: '/ˈtʃɪl.drən/', def: 'Plural de child.' },
+      'good': { pt: 'bom / boa', pos: 'Adjetivo', ipa: '/ɡʊd/', def: 'De qualidade superior ou moralmente correto.' },
+      'new': { pt: 'novo / nova', pos: 'Adjetivo', ipa: '/njuː/', def: 'Que existe há pouco tempo.' },
+      'great': { pt: 'ótimo / grande / excelente', pos: 'Adjetivo', ipa: '/ɡreɪt/', def: 'De proporção notável ou eminência.' },
+      'small': { pt: 'pequeno / pequena', pos: 'Adjetivo', ipa: '/smɔːl/', def: 'De dimensão reduzida.' },
+      'little': { pt: 'pequeno / pouco', pos: 'Adjetivo', ipa: '/ˈlɪt.əl/', def: 'De tamanho menor ou quantidade restrita.' },
+      'much': { pt: 'muito / muita', pos: 'Advérbio / Det.', ipa: '/mʌtʃ/', def: 'Grande quantidade de substantivo incontável.' },
+      'many': { pt: 'muitos / muitas', pos: 'Determinante (pl.)', ipa: '/ˈmɛn.i/', def: 'Grande número de itens contáveis.' },
+      'more': { pt: 'mais', pos: 'Advérbio', ipa: '/mɔːr/', def: 'Em quantidade ou grau superior.' },
+      'all': { pt: 'todo / toda / todos', pos: 'Pronome', ipa: '/ɔːl/', def: 'A totalidade sem exceção.' },
+      'some': { pt: 'algum / alguns / um pouco', pos: 'Pronome', ipa: '/sʌm/', def: 'Quantidade indeterminada.' },
+      'other': { pt: 'outro / outra', pos: 'Pronome', ipa: '/ˈʌð.ər/', def: 'Diferente deste ou daquele.' },
+      'only': { pt: 'apenas / só / único', pos: 'Advérbio / Adj.', ipa: '/ˈoʊn.li/', def: 'Sem outro igual; exclusivamente.' },
+      'even': { pt: 'mesmo / até / par', pos: 'Advérbio', ipa: '/ˈiː.vən/', def: 'Incluindo até casos extremos.' },
+      'now': { pt: 'agora / já', pos: 'Advérbio', ipa: '/naʊ/', def: 'No momento presente.' },
+      'never': { pt: 'nunca / jamais', pos: 'Advérbio', ipa: '/ˈnɛv.ər/', def: 'Em tempo algum.' },
+      'always': { pt: 'sempre', pos: 'Advérbio', ipa: '/ˈɔːl.weɪz/', def: 'Em todas as ocasiões.' },
+      'here': { pt: 'aqui / cá', pos: 'Advérbio', ipa: '/hɪər/', def: 'Neste lugar onde quem fala se encontra.' },
+      'there': { pt: 'lá / ali / lá está', pos: 'Advérbio', ipa: '/ðɛər/', def: 'Em local distante de quem fala.' },
+      'where': { pt: 'onde', pos: 'Advérbio', ipa: '/wɛər/', def: 'Em que lugar.' },
+      'how': { pt: 'como / quanto', pos: 'Advérbio', ipa: '/haʊ/', def: 'De que maneira ou modo.' },
+      'what': { pt: 'o que / que / qual', pos: 'Pronome interrogativo', ipa: '/wɒt/', def: 'Pergunta sobre coisas ou fatos.' },
+      'who': { pt: 'quem', pos: 'Pronome interrogativo', ipa: '/huː/', def: 'Pergunta sobre identidade de pessoa.' },
+      'which': { pt: 'qual / que', pos: 'Pronome relativo', ipa: '/wɪtʃ/', def: 'Especifica um item entre alternativas.' },
+      'so': { pt: 'tão / então / assim', pos: 'Advérbio / Conj.', ipa: '/soʊ/', def: 'Dessa forma ou com tal intensidade.' },
+      'up': { pt: 'para cima / acima', pos: 'Preposição / Adv.', ipa: '/ʌp/', def: 'Em direção ao alto.' },
+      'down': { pt: 'para baixo / abaixo', pos: 'Preposição / Adv.', ipa: '/daʊn/', def: 'Em direção ao solo ou plano inferior.' },
+      'out': { pt: 'fora / para fora', pos: 'Advérbio', ipa: '/aʊt/', def: 'No exterior ou distante do centro.' },
+      'about': { pt: 'sobre / cerca de', pos: 'Preposição', ipa: '/əˈbaʊt/', def: 'A respeito de algo ou aproximadamente.' },
+      'into': { pt: 'para dentro de', pos: 'Preposição', ipa: '/ˈɪn.tuː/', def: 'Movimento em direção ao interior.' },
+      'back': { pt: 'de volta / costas', pos: 'Advérbio / Subst.', ipa: '/bæk/', def: 'Ao ponto de origem ou parte posterior.' },
+      'from': { pt: 'de / a partir de', pos: 'Preposição', ipa: '/frɒm/', def: 'Ponto de partida no espaço ou tempo.' },
+      'at': { pt: 'em / às', pos: 'Preposição', ipa: '/æt/', def: 'Indica localização pontual no tempo ou espaço.' },
+      'on': { pt: 'sobre / em / ligado', pos: 'Preposição', ipa: '/ɒn/', def: 'Apoiado sobre uma superfície.' },
+      'as': { pt: 'como / enquanto / já que', pos: 'Conjunção / Adv.', ipa: '/æz/', def: 'Indica comparação, tempo ou causa.' },
+      'if': { pt: 'se', pos: 'Conjunção condicional', ipa: '/ɪf/', def: 'Expressa uma condição necessária.' },
+      'because': { pt: 'porque / já que', pos: 'Conjunção causal', ipa: '/bɪˈkɒz/', def: 'Expressa a razão ou motivo.' },
+      'prince': { pt: 'príncipe', pos: 'Substantivo', ipa: '/prɪns/', def: 'Filho de rei ou monarca soberano.' },
+      'drawing': { pt: 'desenho', pos: 'Substantivo', ipa: '/ˈdrɔː.ɪŋ/', def: 'Arte de traçar formas e contornos.' },
+      'swallow': { pt: 'engolir / andorinha', pos: 'Verbo / Subst.', ipa: '/ˈswɒl.oʊ/', def: 'Fazer passar alimento pela garganta.' },
+
+      // Common grammatical & structural words
+      'once': { pt: 'certa vez / uma vez', pos: 'Advérbio', ipa: '/wʌns/', def: 'Em alguma ocasião no passado; uma única vez.' },
+      'when': { pt: 'quando', pos: 'Conjunção', ipa: '/wɛn/', def: 'No momento ou na ocasião em que algo ocorre.' },
+      'i': { pt: 'eu', pos: 'Pronome', ipa: '/aɪ/', def: 'Pronome pessoal da primeira pessoa do singular.' },
+      'was': { pt: 'era / estava / tinha', pos: 'Verbo (passado)', ipa: '/wʌz/', def: 'Forma do passado do verbo to be (ser/estar/idade).' },
+      'six': { pt: 'seis', pos: 'Numeral', ipa: '/sɪks/', def: 'Número correspondente a 6.' },
+      'years': { pt: 'anos', pos: 'Substantivo (pl.)', ipa: '/jɪərz/', def: 'Períodos de 365 dias que medem a idade ou o tempo.' },
+      'old': { pt: 'de idade / velho', pos: 'Adjetivo', ipa: '/oʊld/', def: 'Com certa quantidade de anos; idoso ou com certa maturidade.' },
+      'saw': { pt: 'vi / enxerguei', pos: 'Verbo (passado)', ipa: '/sɔː/', def: 'Passado do verbo to see (perceber com a visão).' },
+      'a': { pt: 'um / uma', pos: 'Artigo indefinido', ipa: '/ə/', def: 'Usado antes de substantivos contáveis no singular.' },
+      'magnificent': { pt: 'magnífica / esplêndida', pos: 'Adjetivo', ipa: '/mæɡˈnɪfɪsnt/', def: 'De beleza, grandeza ou qualidade excepcional.' },
+      'picture': { pt: 'imagem / desenho / foto', pos: 'Substantivo', ipa: '/ˈpɪktʃər/', def: 'Representação visual de algo em papel ou tela.' },
+      'in': { pt: 'em / dentro de', pos: 'Preposição', ipa: '/ɪn/', def: 'Indica posição, inclusão ou localização no interior de algo.' },
+      'book': { pt: 'livro', pos: 'Substantivo', ipa: '/bʊk/', def: 'Obra impressa ou digital composta por várias páginas.' },
+      'it': { pt: 'ele / ela / isso', pos: 'Pronome neutro', ipa: '/ɪt/', def: 'Refere-se a um animal, objeto ou situação neutra.' },
+      'of': { pt: 'de / do / da', pos: 'Preposição', ipa: '/ʌv/', def: 'Expressa relação de pertencimento, matéria ou autoria.' },
+      'boa': { pt: 'jiboia / serpente boa', pos: 'Substantivo', ipa: '/ˈboʊ.ə/', def: 'Grande serpente não peçonhenta que subjuga por constrição.' },
+      'constrictor': { pt: 'constritora', pos: 'Adjetivo / Subst.', ipa: '/kənˈstrɪktər/', def: 'Que aperta ou comprime para sufocar.' },
+      'the': { pt: 'o / a / os / as', pos: 'Artigo definido', ipa: '/ðiː / ðə/', def: 'Refere-se a algo específico ou já mencionado.' },
+      'act': { pt: 'ato / ação', pos: 'Substantivo', ipa: '/ækt/', def: 'Ação ou processo de fazer algo.' },
+      'swallowing': { pt: 'engolindo', pos: 'Verbo (gerúndio)', ipa: '/ˈswɒl.oʊ.ɪŋ/', def: 'Fazer passar da boca para o estômago sem mastigar.' },
+      'an': { pt: 'um / uma', pos: 'Artigo indefinido', ipa: '/æn/', def: 'Forma usada antes de palavras iniciadas por som de vogal.' },
+      'animal': { pt: 'animal / bicho', pos: 'Substantivo', ipa: '/ˈæn.ɪ.məl/', def: 'Ser vivo dotado de sensibilidade e movimento.' },
+      'said': { pt: 'dizia / disse', pos: 'Verbo (passado)', ipa: '/sɛd/', def: 'Passado do verbo to say (dizer ou afirmar).' },
+      'prey': { pt: 'presa / caça', pos: 'Substantivo', ipa: '/preɪ/', def: 'Animal caçado e devorado por outro.' },
+      'whole': { pt: 'inteira / inteiraça', pos: 'Adjetivo / Adv.', ipa: '/hoʊl/', def: 'Completa; sem partes faltando.' },
+      'without': { pt: 'sem', pos: 'Preposição', ipa: '/wɪˈðaʊt/', def: 'Na ausência de; privado de algo.' },
+      'chewing': { pt: 'mastigar / mastigando', pos: 'Verbo (gerúndio)', ipa: '/ˈtʃuː.ɪŋ/', def: 'Triturar os alimentos com os dentes.' },
+      'after': { pt: 'depois de / após', pos: 'Preposição', ipa: '/ˈæf.tər/', def: 'Em momento posterior no tempo.' },
+      'that': { pt: 'isso / aquilo / que', pos: 'Pronome', ipa: '/ðæt/', def: 'Refere-se a algo distante ou a um fato acabado de citar.' },
+      'they': { pt: 'elas / eles', pos: 'Pronome plural', ipa: '/ðeɪ/', def: 'Pronome da terceira pessoa do plural.' },
+      'are': { pt: 'são / estão', pos: 'Verbo', ipa: '/ɑːr/', def: 'Forma presente plural do verbo to be.' },
+      'not': { pt: 'não', pos: 'Advérbio de negação', ipa: '/nɒt/', def: 'Indica recusa ou negação.' },
+      'able': { pt: 'capazes / aptas', pos: 'Adjetivo', ipa: '/ˈeɪ.bəl/', def: 'Que tem poder, habilidade ou oportunidade de fazer algo.' },
+      'to': { pt: 'para / a', pos: 'Preposição / Partícula', ipa: '/tuː/', def: 'Partícula que forma o infinitivo ou indica direção.' },
+      'move': { pt: 'mover-se / mexer', pos: 'Verbo', ipa: '/muːv/', def: 'Mudar de lugar ou posição.' },
+      'and': { pt: 'e', pos: 'Conjunção', ipa: '/ænd/', def: 'Liga palavras ou orações semelhantes.' },
+      'sleep': { pt: 'dormem / sono', pos: 'Verbo', ipa: '/sliːp/', def: 'Entrar em estado de repouso natural periódico.' },
+      'through': { pt: 'durante / através de', pos: 'Preposição', ipa: '/θruː/', def: 'Do início ao fim de um intervalo de tempo.' },
+      'months': { pt: 'meses', pos: 'Substantivo (pl.)', ipa: '/mʌnθs/', def: 'Unidades de tempo de aproximadamente trinta dias.' },
+      'need': { pt: 'precisam / necessitam', pos: 'Verbo', ipa: '/niːd/', def: 'Ter necessidade imperiosa de algo.' },
+      'for': { pt: 'para / por', pos: 'Preposição', ipa: '/fɔːr/', def: 'Indica finalidade ou propósito.' },
+      'digestion': { pt: 'digestão', pos: 'Substantivo', ipa: '/daɪˈdʒɛs.tʃən/', def: 'Processo orgânico de transformação dos alimentos.' },
+      'pondered': { pt: 'refleti / ponderei', pos: 'Verbo (passado)', ipa: '/ˈpɒn.dərd/', def: 'Pensar profundamente sobre algo.' },
+      'deeply': { pt: 'profundamente', pos: 'Advérbio', ipa: '/ˈdiːp.li/', def: 'Com intensidade, seriedade ou detalhe íntimo.' },
+      'then': { pt: 'então / naquela época', pos: 'Advérbio', ipa: '/ðɛn/', def: 'Naquele momento em consequência do anterior.' },
+      'over': { pt: 'sobre / a respeito de', pos: 'Preposição', ipa: '/ˈoʊ.vər/', def: 'Acerca de um tema ou assunto.' },
+      'adventures': { pt: 'aventuras', pos: 'Substantivo (pl.)', ipa: '/ədˈvɛn.tʃərz/', def: 'Experiências emocionantes e arriscadas.' },
+      'jungle': { pt: 'selva / floresta tropical', pos: 'Substantivo', ipa: '/ˈdʒʌŋ.ɡəl/', def: 'Mata densa em regiões tropicais.' },
+      'work': { pt: 'trabalho / esforço', pos: 'Substantivo', ipa: '/wɜːrk/', def: 'Atividade física ou intelectual para produzir algo.' },
+      'with': { pt: 'com', pos: 'Preposição', ipa: '/wɪð/', def: 'Indica companhia, instrumento ou meio.' },
+      'colored': { pt: 'colorido / de cor', pos: 'Adjetivo', ipa: '/ˈkʌl.ərd/', def: 'Que possui cores distintas de preto e branco.' },
+      'pencil': { pt: 'lápis', pos: 'Substantivo', ipa: '/ˈpɛn.səl/', def: 'Instrumento para escrever ou desenhar.' },
+      'succeeded': { pt: 'consegui / tive êxito', pos: 'Verbo (passado)', ipa: '/səkˈsiː.dɪd/', def: 'Alcançar o resultado desejado após esforço.' },
+      'making': { pt: 'fazer / criando', pos: 'Verbo (gerúndio)', ipa: '/ˈmeɪ.kɪŋ/', def: 'Construir, produzir ou desenhar.' },
+      'first': { pt: 'primeiro', pos: 'Numeral ordinal', ipa: '/fɜːrst/', def: 'Que precede todos os outros em tempo ou ordem.' },
+      'drawing': { pt: 'desenho', pos: 'Substantivo', ipa: '/ˈdrɔː.ɪŋ/', def: 'Arte de representar formas e figuras sobre superfície.' },
+      'number': { pt: 'número', pos: 'Substantivo', ipa: '/ˈnʌm.bər/', def: 'Símbolo matemático que expressa quantidade ou ordem.' },
+      'one': { pt: 'um', pos: 'Numeral', ipa: '/wʌn/', def: 'A primeira unidade dos números.' },
+      'looked': { pt: 'parecia / olhou', pos: 'Verbo (passado)', ipa: '/lʊkt/', def: 'Apresentar determinado aspecto visual.' },
+      'something': { pt: 'algo / alguma coisa', pos: 'Pronome indefinido', ipa: '/ˈsʌm.θɪŋ/', def: 'Coisa não determinada ou específica.' },
+      'like': { pt: 'como / parecido com', pos: 'Preposição', ipa: '/laɪk/', def: 'Que tem semelhança ou afinidade.' },
+      'this': { pt: 'isto / isso', pos: 'Pronome demonstrativo', ipa: '/ðɪs/', def: 'Designa o que está próximo de quem fala.' },
+      'showed': { pt: 'mostrei / exibi', pos: 'Verbo (passado)', ipa: '/ʃoʊd/', def: 'Apresentar à vista de alguém.' },
+      'masterpiece': { pt: 'obra-prima', pos: 'Substantivo', ipa: '/ˈmæs.tər.piːs/', def: 'Trabalho de arte ou engenho considerado exemplar.' },
+      'grown-ups': { pt: 'adultos / gente grande', pos: 'Substantivo (pl.)', ipa: '/ˈɡroʊn.ʌps/', def: 'Pessoas maduras que deixaram a infância.' },
+      'asked': { pt: 'perguntei / pedi', pos: 'Verbo (passado)', ipa: '/æskt/', def: 'Fazer uma indagação a alguém.' },
+      'them': { pt: 'lhes / a eles', pos: 'Pronome oblíquo', ipa: '/ðɛm/', def: 'Forma oblíqua de eles ou elas.' },
+      'whether': { pt: 'se', pos: 'Conjunção', ipa: '/ˈwɛð.ər/', def: 'Introduz uma alternativa ou dúvida.' },
+      'frightened': { pt: 'assustava / dava medo', pos: 'Verbo / Adjetivo', ipa: '/ˈfraɪ.tənd/', def: 'Causar susto, temor ou pavor.' },
+      'but': { pt: 'mas / porém', pos: 'Conjunção adversativa', ipa: '/bʌt/', def: 'Indica oposição ou contraste.' },
+      'answered': { pt: 'responderam', pos: 'Verbo (passado)', ipa: '/ˈæn.sərd/', def: 'Dar resposta a uma pergunta feita.' },
+      'why': { pt: 'por que', pos: 'Advérbio interrogativo', ipa: '/waɪ/', def: 'Qual a razão ou o motivo de algo.' },
+      'should': { pt: 'deveria', pos: 'Verbo modal', ipa: '/ʃʊd/', def: 'Expressa probabilidade, conselho ou conveniência.' },
+      'any': { pt: 'qualquer / algum', pos: 'Pronome', ipa: '/ˈɛn.i/', def: 'Refere-se a pessoa ou coisa indeterminada.' },
+      'hat': { pt: 'chapéu', pos: 'Substantivo', ipa: '/hæt/', def: 'Acessório de vestuário para cobrir a cabeça.' },
+      'elephant': { pt: 'elefante', pos: 'Substantivo', ipa: '/ˈɛl.ɪ.fənt/', def: 'Grande mamífero quadrúpede provido de tromba.' },
+      'digest': { pt: 'digerir', pos: 'Verbo', ipa: '/daɪˈdʒɛst/', def: 'Transformar alimentos no trato gastrointestinal.' },
+      'digesting': { pt: 'digerindo', pos: 'Verbo (gerúndio)', ipa: '/daɪˈdʒɛs.tɪŋ/', def: 'Em processo contínuo de digestão.' },
+      'alice': { pt: 'Alice', pos: 'Nome próprio', ipa: '/ˈæl.ɪs/', def: 'Nome próprio feminino da protagonista.' },
+      'beginning': { pt: 'começando', pos: 'Verbo (gerúndio)', ipa: '/bɪˈɡɪn.ɪŋ/', def: 'Iniciando uma ação.' },
+      'get': { pt: 'ficar / obter', pos: 'Verbo', ipa: '/ɡɛt/', def: 'Passar a ter ou tornar-se em determinado estado.' },
+      'very': { pt: 'muito / bastante', pos: 'Advérbio de intensidade', ipa: '/ˈvɛr.i/', def: 'Em grau elevado.' },
+      'tired': { pt: 'cansada', pos: 'Adjetivo', ipa: '/ˈtaɪ.ərd/', def: 'Com fadiga ou esgotamento de energia.' },
+      'sitting': { pt: 'sentada', pos: 'Verbo (gerúndio)', ipa: '/ˈsɪt.ɪŋ/', def: 'Apoiada sobre o assento.' },
+      'by': { pt: 'ao lado de / por', pos: 'Preposição', ipa: '/baɪ/', def: 'Perto de; nas imediações de.' },
+      'her': { pt: 'sua / dela', pos: 'Pronome possessivo', ipa: '/hɜːr/', def: 'Pertencente a ela.' },
+      'sister': { pt: 'irmã', pos: 'Substantivo', ipa: '/ˈsɪs.tər/', def: 'Filha dos mesmos pais.' },
+      'bank': { pt: 'barranco / margem', pos: 'Substantivo', ipa: '/bæŋk/', def: 'Terreno inclinado na beira de um rio ou canal.' },
+      'having': { pt: 'ter / tendo', pos: 'Verbo (gerúndio)', ipa: '/ˈhæv.ɪŋ/', def: 'Possuir ou experienciar algo.' },
+      'nothing': { pt: 'nada', pos: 'Pronome', ipa: '/ˈnʌθ.ɪŋ/', def: 'Nenhuma coisa existente.' },
+      'do': { pt: 'fazer', pos: 'Verbo', ipa: '/duː/', def: 'Realizar ou executar determinada atividade.' },
+      'twice': { pt: 'duas vezes', pos: 'Advérbio', ipa: '/twaɪs/', def: 'Em duas ocasiões distintas.' },
+      'peeped': { pt: 'espiou / olhou de relance', pos: 'Verbo (passado)', ipa: '/piːpt/', def: 'Olhar disfarçadamente ou rapidamente.' },
+      'reading': { pt: 'lendo', pos: 'Verbo (gerúndio)', ipa: '/ˈriː.dɪŋ/', def: 'Decodificando palavras e textos escritos.' },
+      'conversations': { pt: 'conversas / diálogos', pos: 'Substantivo (pl.)', ipa: '/ˌkɒn.vəˈseɪ.ʃənz/', def: 'Troca verbal de palavras entre duas ou mais pessoas.' },
+      'thought': { pt: 'pensou / achou', pos: 'Verbo (passado)', ipa: '/θɔːt/', def: 'Passado do verbo to think.' },
+      'use': { pt: 'utilidade / uso', pos: 'Substantivo', ipa: '/juːs/', def: 'Função, proveito ou serventia de algo.' },
+      'considering': { pt: 'considerando / ponderando', pos: 'Verbo (gerúndio)', ipa: '/kənˈsɪd.ər.ɪŋ/', def: 'Pensando nas vantagens e desvantagens.' },
+      'mind': { pt: 'mente / pensamento', pos: 'Substantivo', ipa: '/maɪnd/', def: 'Capacidade intelectual e de pensamento humano.' },
+      'pleasure': { pt: 'prazer / deleite', pos: 'Substantivo', ipa: '/ˈplɛʒ.ər/', def: 'Sensação agradável e aprazível.' },
+      'daisy-chain': { pt: 'corrente de margaridas', pos: 'Substantivo composto', ipa: '/ˈdeɪ.zi.tʃeɪn/', def: 'Cordão feito entrelaçando flores de margarida.' },
+      'worth': { pt: 'valer a pena', pos: 'Adjetivo', ipa: '/wɜːrθ/', def: 'Que compensa o esforço ou valor despendido.' },
+      'trouble': { pt: 'trabalho / esforço', pos: 'Substantivo', ipa: '/ˈtrʌb.əl/', def: 'Dificuldade ou inconveniente.' },
+      'suddenly': { pt: 'de repente / subitamente', pos: 'Advérbio', ipa: '/ˈsʌd.ən.li/', def: 'De maneira inesperada e veloz.' },
+      'white': { pt: 'branco', pos: 'Adjetivo', ipa: '/waɪt/', def: 'Da cor da neve ou do leite.' },
+      'rabbit': { pt: 'coelho', pos: 'Substantivo', ipa: '/ˈræb.ɪt/', def: 'Pequeno mamífero orelhudo e saltador.' },
+      'pink': { pt: 'cor-de-rosa / rosa', pos: 'Adjetivo', ipa: '/pɪŋk/', def: 'Da cor entre o vermelho e o branco.' },
+      'eyes': { pt: 'olhos', pos: 'Substantivo (pl.)', ipa: '/aɪz/', def: 'Órgãos responsáveis pelo sentido da visão.' },
+      'ran': { pt: 'correu', pos: 'Verbo (passado)', ipa: '/ræn/', def: 'Passado do verbo to run.' },
+      'close': { pt: 'perto / rente', pos: 'Advérbio', ipa: '/kloʊs/', def: 'A curta distância.' }
+    };
+
+    const wordTranslationCache = new Map();
+
+    // Fast synchronous look-up for UI rendering
+    function getWordInfo(rawWord) {
+      const clean = cleanString(rawWord);
+      if (!clean) return { word: '', pt: '', pos: 'Palavra', ipa: '', def: '' };
+
+      if (DICT_DB[clean]) {
+        return { word: clean, ...DICT_DB[clean] };
+      }
+
+      if (wordTranslationCache.has(clean)) {
+        const cached = wordTranslationCache.get(clean);
+        return {
+          word: clean,
+          pt: cached.pt,
+          pos: cached.pos || 'Vocabulário',
+          ipa: cached.ipa || `/${clean}/`,
+          def: cached.def || `Tradução no contexto do livro: "${cached.pt}".`
+        };
+      }
+
+      // Initial clean state while background resolution runs (NEVER shows placeholder text!)
+      return {
+        word: clean,
+        pt: '...',
+        pos: 'Vocabulário',
+        ipa: `/${clean}/`,
+        def: `Consultando dicionário e tradução para "${clean}"...`
+      };
+    }
+
+    // Dynamic asynchronous translation resolver for individual words
+    async function resolveWordTranslation(cleanWord) {
+      if (!cleanWord || cleanWord.length < 1) return;
+      if (DICT_DB[cleanWord] && DICT_DB[cleanWord].pt) return DICT_DB[cleanWord].pt;
+      if (wordTranslationCache.has(cleanWord)) return wordTranslationCache.get(cleanWord).pt;
+
+      try {
+        const query = encodeURIComponent(cleanWord);
+        const url = `https://api.mymemory.translated.net/get?q=${query}&langpair=en|pt-br`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.responseData && data.responseData.translatedText) {
+            let tr = data.responseData.translatedText.trim().toLowerCase();
+            tr = tr.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/[.!?,]/g, '');
+            if (!tr.toUpperCase().includes('MYMEMORY')) {
+              const entry = {
+                pt: tr,
+                pos: 'Vocabulário',
+                ipa: `/${cleanWord}/`,
+                def: `Tradução direta: "${tr}". Toque no alto-falante para praticar a pronúncia.`
+              };
+              wordTranslationCache.set(cleanWord, entry);
+
+              // Update all chip badges currently displayed in the DOM
+              document.querySelectorAll(`[data-word-pt="${cleanWord}"]`).forEach(el => {
+                el.textContent = tr;
+              });
+
+              return tr;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Word translation fetch error:', e);
+      }
+      return cleanWord;
+    }
+
+    let activeDictWord = null;
+
+    async function openDictionaryModal(word, contextSentence = '') {
+      const clean = cleanString(word);
+      const info = getWordInfo(clean);
+      activeDictWord = info;
+
+      document.getElementById('dictWordTitle').textContent = word;
+      document.getElementById('dictPhonetic').textContent = info.ipa || `/${clean}/`;
+      document.getElementById('dictPartOfSpeech').textContent = info.pos || 'Vocabulário';
+      document.getElementById('dictTranslation').textContent = info.pt === '...' ? 'Buscando tradução...' : info.pt;
+      document.getElementById('dictDefinition').textContent = info.def;
+
+      const curr = state.sentences[state.currentIndex];
+      const exSentence = contextSentence || (curr ? curr.en : '');
+      document.getElementById('dictExample').textContent = `"${exSentence}"`;
+
+      document.getElementById('modalDictionary').classList.remove('hidden');
+
+      // Speak word on click
+      document.getElementById('btnDictSpeakWord').onclick = () => {
+        speakText(word, 'en-US', 0.85);
+      };
+
+      document.getElementById('btnDictSaveVocab').onclick = () => {
+        const ptSaved = document.getElementById('dictTranslation').textContent;
+        saveVocabularyItem(clean, `${clean} (${ptSaved}) — Ex: "${exSentence}"`);
+        document.getElementById('modalDictionary').classList.add('hidden');
+      };
+
+      // If translation or full definition is not in local curated table, fetch live!
+      if (!DICT_DB[clean] || info.pt === '...') {
+        // 1. Fetch real Portuguese translation
+        resolveWordTranslation(clean).then(realPt => {
+          if (realPt) {
+            document.getElementById('dictTranslation').textContent = realPt;
+            document.getElementById('dictDefinition').textContent = `Significado em português: "${realPt}". Palavra presente na frase em estudo.`;
+          }
+        });
+
+        // 2. Fetch Free Dictionary API for real English IPA & grammatical classification
+        try {
+          const dictUrl = `https://api.dictionaryapi.dev/api/v2/entries/en/${clean}`;
+          const res = await fetch(dictUrl);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data[0]) {
+              const phonetic = data[0].phonetic || (data[0].phonetics && data[0].phonetics.find(p => p.text)?.text);
+              if (phonetic) document.getElementById('dictPhonetic').textContent = phonetic;
+
+              if (data[0].meanings && data[0].meanings.length > 0) {
+                const m = data[0].meanings[0];
+                document.getElementById('dictPartOfSpeech').textContent = m.partOfSpeech || 'Palavra';
+                if (m.definitions && m.definitions[0]) {
+                  const enDef = m.definitions[0].definition;
+                  const currentPt = document.getElementById('dictTranslation').textContent;
+                  document.getElementById('dictDefinition').textContent = `${currentPt ? `Tradução: "${currentPt}". ` : ''}Definição em inglês: ${enDef}`;
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.log('Online dictionary detail fetch note:', err);
+        }
+      }
+    }
+
+    function renderLiteralTranslationCard() {
+      const current = state.sentences[state.currentIndex];
+      const container = document.getElementById('literalWordsList');
+      if (!current || !container) return;
+
+      if (state.audioFlow === 'challenge' && !state.challengeUnlocked) {
+        container.innerHTML = '<span class="text-[11px] text-amber-400/80 font-medium italic py-1">🔒 Palavras literais bloqueadas até você acertar a fala.</span>';
+        return;
+      }
+
+      container.innerHTML = '';
+      const rawTokens = current.en.split(/\s+/);
+
+      rawTokens.forEach(token => {
+        const clean = cleanString(token);
+        if (!clean) return;
+        const info = getWordInfo(clean);
+        const displayPt = (info.pt && info.pt !== '...') ? info.pt.split('/')[0].trim() : '...';
+
+        // Dual-level interlinear word chip
+        const pill = document.createElement('div');
+        pill.className = 'flex flex-col items-center bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 hover:border-amber-400/80 px-2 py-1 rounded-lg cursor-pointer transition active:scale-95 group shadow-sm';
+        pill.title = `Abrir dicionário para "${clean}"`;
+        
+        pill.innerHTML = `
+          <span class="text-xs font-bold text-white group-hover:text-amber-300 leading-none">${token}</span>
+          <span class="literal-pt-sub text-[9px] text-slate-400 group-hover:text-slate-200 mt-0.5 leading-none" data-word-pt="${clean}">${displayPt}</span>
+        `;
+
+        pill.onclick = (e) => {
+          e.stopPropagation();
+          openDictionaryModal(clean, current.en);
+        };
+
+        container.appendChild(pill);
+
+        // If translation is pending, trigger asynchronous resolution
+        if (displayPt === '...') {
+          resolveWordTranslation(clean);
+        }
+      });
+    }
+
+
+    // --- REAL-TIME TRANSLATION ENGINE & PRE-FETCHER (SOLVES ETERNAL LOADING) ---
+    const translationCache = new Map();
+
+    async function fetchTranslation(text) {
+      const trimmed = text.trim();
+      if (!trimmed) return '';
+      if (translationCache.has(trimmed)) return translationCache.get(trimmed);
+
+      // Primary: MyMemory Translation API (Free, high quality, CORS-friendly)
+      try {
+        const query = encodeURIComponent(trimmed.slice(0, 320));
+        const url = `https://api.mymemory.translated.net/get?q=${query}&langpair=en|pt-br`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.responseData && data.responseData.translatedText) {
+            let translated = data.responseData.translatedText;
+            // Clean any html entities or warnings
+            translated = translated.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+            if (!translated.toUpperCase().includes('MYMEMORY WARNING')) {
+              translationCache.set(trimmed, translated);
+              return translated;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('MyMemory API error, using dictionary fallback:', err);
+      }
+
+      // Secondary Fallback: Smart contextual assembly from built-in dictionary
+      const tokens = trimmed.split(/\s+/);
+      const translatedTokens = tokens.map(t => {
+        const clean = cleanString(t);
+        if (DICT_DB[clean]) {
+          return DICT_DB[clean].pt.split('/')[0].trim();
+        }
+        return t;
+      });
+      const assembled = translatedTokens.join(' ');
+      translationCache.set(trimmed, assembled);
+      return assembled;
+    }
+
+    async function ensureSentenceTranslated(index) {
+      if (index < 0 || index >= state.sentences.length) return;
+      const item = state.sentences[index];
+      if (!item) return;
+
+      // If already has genuine translation, return it
+      if (item.pt && !item.pt.startsWith('[Tradução')) {
+        return item.pt;
+      }
+
+      // Show sleek inline loader on card if it is the active sentence
+      if (index === state.currentIndex) {
+        const ptEl = document.getElementById('ptSentenceText');
+        if (ptEl) {
+          ptEl.innerHTML = `
+            <span class="inline-flex items-center gap-1.5 text-indigo-400 text-xs">
+              <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg>
+              Traduzindo sentença do livro...
+            </span>
+          `;
+        }
+      }
+
+      const translated = await fetchTranslation(item.en);
+      item.pt = translated;
+
+      if (index === state.currentIndex) {
+        const ptEl = document.getElementById('ptSentenceText');
+        if (ptEl) ptEl.textContent = translated;
+        renderLiteralTranslationCard();
+      }
+
+      // Proactively pre-fetch the next 2 sentences in the background so there is zero delay!
+      setTimeout(() => {
+        if (index + 1 < state.sentences.length) {
+          const next1 = state.sentences[index + 1];
+          if (!next1.pt || next1.pt.startsWith('[Tradução')) {
+            fetchTranslation(next1.en).then(t => next1.pt = t);
+          }
+        }
+        if (index + 2 < state.sentences.length) {
+          const next2 = state.sentences[index + 2];
+          if (!next2.pt || next2.pt.startsWith('[Tradução')) {
+            fetchTranslation(next2.en).then(t => next2.pt = t);
+          }
+        }
+      }, 50);
+
+      return translated;
+    }
+
+
+    // --- INDEXEDDB FULL BOOK & PROGRESS PERSISTENCE ENGINE ---
+    const DB_NAME = 'ShadowReaderDB';
+    const DB_VERSION = 1;
+
+    function openShadowDB() {
+      return new Promise((resolve, reject) => {
+        if (!('indexedDB' in window)) {
+          console.warn('IndexedDB unsupported in this environment');
+          resolve(null);
+          return;
+        }
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains('books')) {
+            const store = db.createObjectStore('books', { keyPath: 'id' });
+            store.createIndex('lastRead', 'lastRead', { unique: false });
+          }
+          if (!db.objectStoreNames.contains('meta')) {
+            db.createObjectStore('meta', { keyPath: 'key' });
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = (err) => {
+          console.warn('openShadowDB error:', err);
+          resolve(null);
+        };
+      });
+    }
+
+    async function saveBookToDB(book) {
+      try {
+        const db = await openShadowDB();
+        if (!db) return false;
+        const tx = db.transaction(['books', 'meta'], 'readwrite');
+        const booksStore = tx.objectStore('books');
+        const metaStore = tx.objectStore('meta');
+
+        const record = {
+          id: book.id,
+          title: book.title,
+          author: book.author || 'Upload do Usuário',
+          totalSentences: book.sentences.length,
+          currentIndex: book.currentIndex || 0,
+          lastRead: new Date().toISOString(),
+          progressPercent: Math.round((((book.currentIndex || 0) + 1) / book.sentences.length) * 100),
+          sentences: book.sentences
+        };
+
+        booksStore.put(record);
+        metaStore.put({ key: 'activeBookId', value: book.id });
+
+        return new Promise(r => {
+          tx.oncomplete = () => {
+            renderSavedBooksList();
+            r(true);
+          };
+          tx.onerror = () => r(false);
+        });
+      } catch (err) {
+        console.warn('saveBookToDB failed:', err);
+        return false;
+      }
+    }
+
+    async function updateBookmarkInDB(bookId, currentIndex) {
+      // Fast indicator feedback in UI
+      const ind = document.getElementById('bookmarkSavedIndicator');
+      if (ind) {
+        ind.className = 'inline-flex items-center gap-1 text-[10px] text-amber-300 font-medium bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20';
+        ind.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span> Salvando...';
+      }
+
+      // Also persist bookmark position in localStorage as instant sync fallback
+      try {
+        localStorage.setItem(`sr_bookmark_${bookId}`, currentIndex.toString());
+        localStorage.setItem('sr_active_book_id', bookId);
+      } catch(e){}
+
+      try {
+        const db = await openShadowDB();
+        if (db) {
+          const tx = db.transaction(['books', 'meta'], 'readwrite');
+          const booksStore = tx.objectStore('books');
+          const metaStore = tx.objectStore('meta');
+
+          metaStore.put({ key: 'activeBookId', value: bookId });
+
+          const getReq = booksStore.get(bookId);
+          getReq.onsuccess = () => {
+            const b = getReq.result;
+            if (b) {
+              b.currentIndex = currentIndex;
+              b.lastRead = new Date().toISOString();
+              b.progressPercent = Math.round(((currentIndex + 1) / b.totalSentences) * 100);
+              booksStore.put(b);
+            }
+          };
+
+          tx.oncomplete = () => {
+            if (ind) {
+              ind.className = 'inline-flex items-center gap-1 text-[10px] text-emerald-400 font-medium bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20';
+              ind.innerHTML = '<svg class="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Salvo';
+            }
+          };
+        } else {
+          if (ind) {
+            ind.className = 'inline-flex items-center gap-1 text-[10px] text-emerald-400 font-medium bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20';
+            ind.innerHTML = '<svg class="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Salvo';
+          }
+        }
+      } catch (err) {
+        console.warn('updateBookmarkInDB error:', err);
+      }
+    }
+
+    async function loadAllSavedBooksFromDB() {
+      try {
+        const db = await openShadowDB();
+        if (!db) return [];
+        const tx = db.transaction('books', 'readonly');
+        const store = tx.objectStore('books');
+        const req = store.getAll();
+        return new Promise(resolve => {
+          req.onsuccess = () => {
+            const books = req.result || [];
+            books.sort((a, b) => new Date(b.lastRead) - new Date(a.lastRead));
+            resolve(books);
+          };
+          req.onerror = () => resolve([]);
+        });
+      } catch(e) {
+        return [];
+      }
+    }
+
+    async function deleteBookFromDB(bookId) {
+      try {
+        const db = await openShadowDB();
+        if (!db) return false;
+        const tx = db.transaction('books', 'readwrite');
+        tx.objectStore('books').delete(bookId);
+        return new Promise(r => {
+          tx.oncomplete = () => {
+            renderSavedBooksList();
+            r(true);
+          };
+          tx.onerror = () => r(false);
+        });
+      } catch(e) {
+        return false;
+      }
+    }
+
+    async function resumeBook(bookId) {
+      try {
+        const db = await openShadowDB();
+        if (!db) return;
+        const tx = db.transaction('books', 'readonly');
+        const req = tx.objectStore('books').get(bookId);
+        req.onsuccess = () => {
+          const book = req.result;
+          if (book) {
+            state.currentBookId = book.id;
+            state.currentBookTitle = book.title;
+            state.sentences = book.sentences;
+            state.currentIndex = Math.max(0, Math.min(book.currentIndex || 0, book.sentences.length - 1));
+            state.streak = 0;
+
+            renderSentence();
+            updateBookmarkInDB(state.currentBookId, state.currentIndex);
+            document.getElementById('modalLibrary').classList.add('hidden');
+            showToast(`Continuando "${book.title}" na sentença ${state.currentIndex + 1} de ${book.totalSentences} (${book.progressPercent}%)!`);
+          }
+        };
+      } catch(e) {
+        console.warn('resumeBook error:', e);
+      }
+    }
+
+    async function renderSavedBooksList() {
+      const container = document.getElementById('savedBooksList');
+      const section = document.getElementById('savedBooksSection');
+      const badge = document.getElementById('savedBooksCountBadge');
+      if (!container || !section) return;
+
+      const books = await loadAllSavedBooksFromDB();
+      if (books.length === 0) {
+        section.classList.add('hidden');
+        return;
+      }
+
+      section.classList.remove('hidden');
+      badge.textContent = `${books.length} ${books.length === 1 ? 'livro salvo' : 'livros salvos'}`;
+      container.innerHTML = '';
+
+      books.forEach(b => {
+        const card = document.createElement('div');
+        const isCurrent = (b.id === state.currentBookId);
+        const lastDate = new Date(b.lastRead).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+        card.className = `p-3 rounded-xl border ${isCurrent ? 'border-brand-500/60 bg-brand-500/10' : 'border-slate-800 bg-slate-800/50 hover:border-slate-700'} flex items-center justify-between gap-2 transition`;
+        
+        card.innerHTML = `
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1.5">
+              <h5 class="text-xs sm:text-sm font-bold text-white truncate">${b.title}</h5>
+              ${isCurrent ? '<span class="text-[9px] px-1.5 py-0.2 rounded bg-brand-500/30 text-brand-300 font-semibold shrink-0">Lendo agora</span>' : ''}
+            </div>
+            <div class="flex items-center gap-2 mt-1 text-[10px] text-slate-400">
+              <span class="text-emerald-400 font-medium">Sentença ${b.currentIndex + 1} de ${b.totalSentences} (${b.progressPercent}%)</span>
+              <span>•</span>
+              <span>Lido em ${lastDate}</span>
+            </div>
+            <!-- Progress bar -->
+            <div class="w-full bg-slate-800 rounded-full h-1 mt-1.5 overflow-hidden">
+              <div class="bg-gradient-to-r from-emerald-500 to-brand-500 h-full" style="width: ${b.progressPercent}%"></div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-1 shrink-0">
+            <button class="resume-book-btn px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow transition" data-id="${b.id}">
+              Continuar
+            </button>
+            <button class="delete-book-btn p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition" data-id="${b.id}" title="Excluir livro salvo">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+            </button>
+          </div>
+        `;
+
+        card.querySelector('.resume-book-btn').onclick = () => resumeBook(b.id);
+        card.querySelector('.delete-book-btn').onclick = async (e) => {
+          e.stopPropagation();
+          await deleteBookFromDB(b.id);
+          showToast(`Livro "${b.title}" removido dos salvos.`);
+        };
+
+        container.appendChild(card);
+      });
+    }
+
+    // Auto-restore last active session on initial page load
+    async function initSessionRestore() {
+      try {
+        const db = await openShadowDB();
+        if (!db) return;
+
+        // Check active book in meta
+        const tx = db.transaction(['books', 'meta'], 'readonly');
+        const metaReq = tx.objectStore('meta').get('activeBookId');
+
+        metaReq.onsuccess = () => {
+          const activeId = metaReq.result?.value || localStorage.getItem('sr_active_book_id');
+          if (activeId) {
+            const bookReq = tx.objectStore('books').get(activeId);
+            bookReq.onsuccess = () => {
+              const book = bookReq.result;
+              if (book) {
+                state.currentBookId = book.id;
+                state.currentBookTitle = book.title;
+                state.sentences = book.sentences;
+                state.currentIndex = Math.max(0, Math.min(book.currentIndex || 0, book.sentences.length - 1));
+                renderSentence();
+                showToast(`Marcador restaurado: "${book.title}" na sentença ${state.currentIndex + 1} de ${book.totalSentences}!`);
+              }
+            };
+          }
+        };
+      } catch(err) {
+        console.warn('initSessionRestore note:', err);
+      }
+    }
+
+
+    // --- UPFRONT MICROPHONE AUTHORIZATION ENGINE ---
+    function updateMicPermissionUI(granted) {
+      state.micPermissionGranted = granted;
+      const banner = document.getElementById('micPermissionBanner');
+      if (banner) {
+        if (granted) {
+          banner.classList.add('hidden');
+        } else {
+          banner.classList.remove('hidden');
+        }
+      }
+
+      const micBtn = document.getElementById('btnManualMic');
+      if (micBtn) {
+        if (granted) {
+          micBtn.classList.remove('text-slate-300');
+          micBtn.classList.add('text-emerald-400');
+          micBtn.title = 'Microfone Liberado (Toque para falar)';
+        } else {
+          micBtn.classList.remove('text-emerald-400');
+          micBtn.classList.add('text-slate-300');
+        }
+      }
+    }
+
+    async function requestMicrophonePermission(interactive = true) {
+      if (state.micPermissionGranted) return true;
+
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          // Immediately close the test stream so the hardware is idle for speech recognition
+          stream.getTracks().forEach(t => t.stop());
+          updateMicPermissionUI(true);
+          if (interactive) {
+            showToast('🎤 Microfone liberado com sucesso!');
+          }
+          return true;
+        } catch (err) {
+          console.warn('Microphone permission not granted:', err);
+          updateMicPermissionUI(false);
+          if (interactive) {
+            showToast('Aviso: Permita o microfone no navegador para treinar a pronúncia.');
+          }
+          return false;
+        }
+      }
+      return false;
+    }
+
+    // Proactively check permission state on load
+    function checkInitialMicPermission() {
+      if (navigator.permissions && navigator.permissions.query) {
+        navigator.permissions.query({ name: 'microphone' }).then(status => {
+          if (status.state === 'granted') {
+            updateMicPermissionUI(true);
+          } else {
+            updateMicPermissionUI(false);
+          }
+          status.onchange = () => {
+            updateMicPermissionUI(status.state === 'granted');
+          };
+        }).catch(() => {});
+      }
+    }
+
+    // --- SAMPLE BOOKS PRELOADED WITH EN SENTENCES & PT TRANSLATIONS ---
+    const SAMPLE_BOOKS = [
+      {
+        id: 'little-prince',
+        title: 'The Little Prince',
+        author: 'Antoine de Saint-Exupéry',
+        sentences: [
+          { en: "Once when I was six years old I saw a magnificent picture in a book.", pt: "Certa vez, quando eu tinha seis anos, vi uma imagem magnífica em um livro." },
+          { en: "It was a picture of a boa constrictor in the act of swallowing an animal.", pt: "Era a figura de uma jiboia no ato de engolir um animal." },
+          { en: "In the book it said: 'Boa constrictors swallow their prey whole, without chewing it.'", pt: "No livro dizia: 'As jiboias engolem sua presa inteira, sem mastigá-la.'" },
+          { en: "After that they are not able to move, and they sleep through the six months that they need for digestion.", pt: "Depois disso elas não conseguem se mover, e dormem durante os seis meses necessários para a digestão." },
+          { en: "I pondered deeply, then, over the adventures of the jungle.", pt: "Refleti profundamente, então, sobre as aventuras da selva." },
+          { en: "And after some work with a colored pencil I succeeded in making my first drawing.", pt: "E depois de algum trabalho com um lápis de cor, consegui fazer meu primeiro desenho." },
+          { en: "My Drawing Number One. It looked something like this.", pt: "Meu Desenho Número Um. Parecia mais ou menos com isso." },
+          { en: "I showed my masterpiece to the grown-ups, and asked them whether the drawing frightened them.", pt: "Mostrei minha obra-prima aos adultos e perguntei se o desenho lhes dava medo." },
+          { en: "But they answered: 'Frighten? Why should any one be frightened by a hat?'", pt: "Mas eles responderam: 'Medo? Por que alguém teria medo de um chapéu?'" },
+          { en: "My drawing was not a picture of a hat. It was a picture of a boa constrictor digesting an elephant.", pt: "Meu desenho não era a figura de um chapéu. Era a imagem de uma jiboia digerindo um elefante." }
+        ]
+      },
+      {
+        id: 'alice',
+        title: "Alice's Adventures in Wonderland",
+        author: 'Lewis Carroll',
+        sentences: [
+          { en: "Alice was beginning to get very tired of sitting by her sister on the bank.", pt: "Alice estava começando a ficar muito cansada de ficar sentada ao lado de sua irmã no barranco." },
+          { en: "And of having nothing to do: once or twice she had peeped into the book her sister was reading.", pt: "E de não ter nada para fazer: uma ou duas vezes ela havia espiado o livro que sua irmã estava lendo." },
+          { en: "But it had no pictures or conversations in it, 'and what is the use of a book,' thought Alice 'without pictures or conversations?'", pt: "Mas não tinha gravuras nem diálogos, 'e de que serve um livro', pensou Alice, 'sem gravuras nem diálogos?'" },
+          { en: "So she was considering in her own mind whether the pleasure of making a daisy-chain would be worth the trouble.", pt: "Então ela estava considerando em sua mente se o prazer de fazer uma corrente de margaridas valeria o esforço." },
+          { en: "Suddenly a White Rabbit with pink eyes ran close by her.", pt: "De repente, um Coelho Branco de olhos cor-de-rosa passou correndo perto dela." },
+          { en: "There was nothing so very remarkable in that; nor did Alice think it so very much out of the way to hear the Rabbit say to itself, 'Oh dear! Oh dear! I shall be late!'", pt: "Não havia nada de tão extraordinário nisso; nem Alice achou tão estranho ouvir o Coelho dizer para si mesmo: 'Ai, meu Deus! Vou me atrasar!'" }
+        ]
+      },
+      {
+        id: 'sherlock',
+        title: 'A Scandal in Bohemia',
+        author: 'Arthur Conan Doyle',
+        sentences: [
+          { en: "To Sherlock Holmes she is always THE woman.", pt: "Para Sherlock Holmes, ela é sempre A mulher." },
+          { en: "I have seldom heard him mention her under any other name.", pt: "Raramente o ouvi mencioná-la por qualquer outro nome." },
+          { en: "In his eyes she eclipses and predominates the whole of her sex.", pt: "Aos olhos dele, ela eclipsa e predomina sobre todo o seu sexo." },
+          { en: "It was not that he felt any emotion akin to love for Irene Adler.", pt: "Não que ele sentisse qualquer emoção semelhante ao amor por Irene Adler." },
+          { en: "All emotions, and that one particularly, were abhorrent to his cold, precise but admirably balanced mind.", pt: "Todas as emoções, e essa em particular, eram abomináveis para sua mente fria, precisa, mas admiravelmente equilibrada." }
+        ]
+      }
+    ];
+
+    // --- APP STATE ---
+    const state = {
+      currentBookId: 'little-prince',
+      currentBookTitle: SAMPLE_BOOKS[0].title,
+      sentences: [...SAMPLE_BOOKS[0].sentences],
+      currentIndex: 0,
+      isPlayingLoop: false,
+      isListeningMic: false,
+      isSpeakingTTS: false,
+      streak: 0,
+      savedVocab: [],
+      // Options
+      ttsEngine: 'auto', // 'auto' or 'online'
+      audioFlow: 'pt_first',
+      challengeUnlocked: false,
+      micPermissionGranted: false,
+      readWordsOnSuccess: false, // 'standard' (EN -> PT -> Mic) or 'sandwich' (EN -> PT -> EN -> Mic)
+      repeatOnError: true,
+      slowdownOnError: true,
+      threshold: 75,
+      ttsSpeed: 1.0,
+      ttsSpeedEn: 0.85,
+      ttsSpeedPt: 1.15,
+      audioBeeps: true,
+      autoHandsFree: false,
+      // WakeLock
+      wakeLockSentinel: null,
+      inPocketMode: false
+    };
+
+
+    // --- CENTRALIZED SETTINGS PERSISTENCE ---
+    function saveSettings() {
+      try {
+        const opts = {
+          audioFlow: state.audioFlow,
+          repeatOnError: state.repeatOnError,
+          slowdownOnError: state.slowdownOnError,
+          readWordsOnSuccess: state.readWordsOnSuccess,
+          threshold: state.threshold,
+          ttsSpeedEn: state.ttsSpeedEn,
+          ttsSpeedPt: state.ttsSpeedPt,
+          ttsEngine: state.ttsEngine,
+          audioBeeps: state.audioBeeps,
+          autoHandsFree: state.autoHandsFree
+        };
+        localStorage.setItem('shadowreader_opts', JSON.stringify(opts));
+      } catch(e){}
+    }
+
+    function restoreSettings() {
+      try {
+        const saved = localStorage.getItem('shadowreader_opts');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          Object.assign(state, parsed);
+        }
+      } catch(e){}
+
+      // Sync settings modal UI elements
+      const radio = document.querySelector(`input[name="audioFlow"][value="${state.audioFlow}"]`);
+      if (radio) radio.checked = true;
+
+      const repeatChk = document.getElementById('cfgRepeatOnError');
+      if (repeatChk) repeatChk.checked = state.repeatOnError;
+
+      const slowChk = document.getElementById('cfgSlowdownOnError');
+      if (slowChk) slowChk.checked = state.slowdownOnError;
+
+      const wordsChk = document.getElementById('cfgReadWordsOnSuccess');
+      if (wordsChk) wordsChk.checked = state.readWordsOnSuccess;
+
+      const threshSlider = document.getElementById('cfgThresholdSlider');
+      if (threshSlider) {
+        threshSlider.value = state.threshold;
+        const label = state.threshold <= 60 ? 'Fácil' : state.threshold >= 85 ? 'Rigoroso' : 'Equilibrado';
+        document.getElementById('cfgThresholdDisplay').textContent = `${state.threshold}% (${label})`;
+      }
+
+      const enSlider = document.getElementById('cfgSpeedEnSlider');
+      if (enSlider) {
+        enSlider.value = state.ttsSpeedEn;
+        document.getElementById('cfgSpeedEnDisplay').textContent = `${state.ttsSpeedEn}x`;
+      }
+
+      const ptSlider = document.getElementById('cfgSpeedPtSlider');
+      if (ptSlider) {
+        ptSlider.value = state.ttsSpeedPt;
+        document.getElementById('cfgSpeedPtDisplay').textContent = `${state.ttsSpeedPt}x`;
+      }
+
+      const ttsEngineRadio = document.querySelector(`input[name="ttsEngine"][value="${state.ttsEngine}"]`);
+      if (ttsEngineRadio) ttsEngineRadio.checked = true;
+
+      const beepsChk = document.getElementById('cfgAudioBeeps');
+      if (beepsChk) beepsChk.checked = state.audioBeeps;
+
+      const handsFreeChk = document.getElementById('cfgAutoHandsFree');
+      if (handsFreeChk) handsFreeChk.checked = state.autoHandsFree;
+    }
+
+    // Load saved settings & vocab from localStorage
+    try {
+      const saved = localStorage.getItem('shadowreader_vocab');
+      if (saved) state.savedVocab = JSON.parse(saved);
+      const savedOpts = localStorage.getItem('shadowreader_opts');
+      if (savedOpts) {
+        const parsed = JSON.parse(savedOpts);
+        Object.assign(state, parsed);
+      }
+    } catch (e) {
+      console.warn('LocalStorage error:', e);
+    }
+
+    // --- AUDIO SYNTHESIS / WEB AUDIO BEEPS ---
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+
+    function playChime(type) {
+      if (!state.audioBeeps) return;
+      try {
+        if (!audioCtx) audioCtx = new AudioContextClass();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+
+        if (type === 'your_turn') {
+          // Two cheerful ascending soft beeps
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(440, now); // A4
+          osc.frequency.setValueAtTime(880, now + 0.1); // A5
+          gain.gain.setValueAtTime(0.08, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+          osc.start(now);
+          osc.stop(now + 0.25);
+        } else if (type === 'success') {
+          // Major chord ding
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(523.25, now); // C5
+          osc.frequency.setValueAtTime(659.25, now + 0.08); // E5
+          osc.frequency.setValueAtTime(783.99, now + 0.16); // G5
+          gain.gain.setValueAtTime(0.12, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+          osc.start(now);
+          osc.stop(now + 0.45);
+        } else if (type === 'retry') {
+          // Low gentle double-bonk
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(260, now);
+          osc.frequency.setValueAtTime(220, now + 0.12);
+          gain.gain.setValueAtTime(0.1, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+          osc.start(now);
+          osc.stop(now + 0.3);
+        }
+      } catch (e) {
+        // AudioContext not available or blocked
+      }
+    }
+
+
+    // --- GLOBAL CANCELLATION TOKEN & AUDIO KILL SWITCH ---
+    let activeStepToken = 0;
+
+    function stopAllAudio() {
+      activeStepToken++; // Immediately invalidates any awaiting async loops!
+      if ('speechSynthesis' in window) {
+        try { window.speechSynthesis.cancel(); } catch(e){}
+      }
+      const player = document.getElementById('globalAudioPlayer');
+      if (player) {
+        try {
+          player.pause();
+          player.currentTime = 0;
+          player.src = '';
+        } catch(e){}
+      }
+      if (recognition) {
+        try { recognition.stop(); } catch(e){}
+      }
+      setAudioWave(false);
+      setMicUI(false);
+    }
+
+    // --- DUAL-ENGINE TEXT TO SPEECH (TTS) WITH AUTOPLAY PERSISTENCE ---
+    window.activeUtterance = null; // Prevents Chromium garbage collection bug
+    let cachedVoices = [];
+
+    function loadVoices() {
+      if ('speechSynthesis' in window) {
+        cachedVoices = window.speechSynthesis.getVoices();
+      }
+    }
+    if ('speechSynthesis' in window) {
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    // Pre-unlocks audio context, speech synthesis, and persistent HTML5 audio tag on user click
+    function unlockAudioSession() {
+      const player = document.getElementById('globalAudioPlayer');
+      if (player && !player.dataset.unlocked) {
+        player.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+        player.play().then(() => {
+          player.dataset.unlocked = 'true';
+          console.log('Persistent audio player unlocked for subsequent sentences');
+        }).catch(() => {});
+      }
+      if ('speechSynthesis' in window) {
+        try { window.speechSynthesis.resume(); } catch(e){}
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        try { audioCtx.resume(); } catch(e){}
+      }
+    }
+
+    function setAudioWave(visible, label = 'Lendo áudio...') {
+      const wave = document.getElementById('audioWaveIndicator');
+      if (!wave) return;
+      if (visible) {
+        wave.classList.remove('hidden');
+        wave.classList.add('flex');
+        const txt = wave.querySelector('span:last-child');
+        if (txt) txt.textContent = label;
+      } else {
+        wave.classList.add('hidden');
+        wave.classList.remove('flex');
+      }
+    }
+
+
+    function getEffectiveSpeed(lang, speedMultiplier = 1.0) {
+      const isPt = lang.startsWith('pt');
+      const base = isPt ? (state.ttsSpeedPt || 1.15) : (state.ttsSpeedEn || 0.85);
+      return Math.max(0.6, Math.min(1.8, base * speedMultiplier));
+    }
+
+    // Engine 1: Native Web Speech API with V8 GC protection & resume watchdog
+    function playBrowserSpeech(text, lang, speedMultiplier = 1.0) {
+      return new Promise((resolve) => {
+        if (!('speechSynthesis' in window)) {
+          resolve(false);
+          return;
+        }
+
+        try {
+          // Only cancel if speech is actively stuck or playing something else
+          if (window.speechSynthesis.speaking) {
+            window.speechSynthesis.cancel();
+          }
+          window.speechSynthesis.resume();
+        } catch (e) {}
+
+        const prepDelay = window.speechSynthesis.speaking ? 80 : 20;
+
+        setTimeout(() => {
+          try {
+            window.speechSynthesis.resume();
+            const utterance = new SpeechSynthesisUtterance(text);
+            window.activeUtterance = utterance; // Prevent V8 garbage collection!
+            
+            utterance.lang = lang;
+            utterance.rate = getEffectiveSpeed(lang, speedMultiplier);
+
+            if (!cachedVoices.length) cachedVoices = window.speechSynthesis.getVoices();
+            const langPrefix = lang.slice(0, 2);
+            const chosenVoice = cachedVoices.find(v => v.lang.startsWith(langPrefix) && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Samantha') || v.name.includes('Luciana'))) ||
+                                cachedVoices.find(v => v.lang.startsWith(langPrefix));
+            if (chosenVoice) utterance.voice = chosenVoice;
+
+            let started = false;
+            let finished = false;
+
+            // Watchdog: If native TTS fails to start within 900ms, fail over to persistent HTML5 audio
+            const watchdog = setTimeout(() => {
+                if (!started) console.log('Speech start delayed for:', text);
+              if (!started) {
+                console.warn('Native speech onstart timed out for: ' + text.slice(0, 25) + '... Failing over.');
+                try { window.speechSynthesis.cancel(); } catch(e){}
+                window.activeUtterance = null;
+                resolve(false);
+              }
+            }, 1600);
+
+            // Periodically ping resume() to fix long Chrome pauses
+            const resumeInterval = setInterval(() => {
+              if (started && !finished && window.speechSynthesis.speaking) {
+                window.speechSynthesis.resume();
+              }
+            }, 250);
+
+            utterance.onstart = () => {
+              started = true;
+              clearTimeout(watchdog);
+            };
+
+            utterance.onend = () => {
+              finished = true;
+              clearTimeout(watchdog);
+              clearInterval(resumeInterval);
+              window.activeUtterance = null;
+              resolve(true);
+            };
+
+            utterance.onerror = (err) => {
+              console.warn('Native TTS error:', err);
+              clearTimeout(watchdog);
+              clearInterval(resumeInterval);
+              window.activeUtterance = null;
+              resolve(false);
+            };
+
+            window.speechSynthesis.speak(utterance);
+            window.speechSynthesis.resume();
+          } catch (err) {
+            console.warn('playBrowserSpeech exception:', err);
+            window.activeUtterance = null;
+            resolve(false);
+          }
+        }, 120);
+      });
+    }
+
+    // Engine 2: HTML5 Persistent Audio Element with Cloud TTS
+    function playOnlineTts(text, lang) {
+      return new Promise((resolve) => {
+        const langCode = lang.startsWith('pt') ? 'pt' : 'en';
+        const cleanText = text.replace(/["']/g, '').slice(0, 160);
+        const encoded = encodeURIComponent(cleanText);
+        const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${langCode}&q=${encoded}`;
+
+        const player = document.getElementById('globalAudioPlayer');
+        if (!player) {
+          resolve(false);
+          return;
+        }
+
+        let done = false;
+        const cleanup = (result) => {
+          if (!done) {
+            done = true;
+            player.onended = null;
+            player.onerror = null;
+            resolve(result);
+          }
+        };
+
+        player.onended = () => cleanup(true);
+        player.onerror = (e) => {
+          console.warn('Global audio player error:', e);
+          cleanup(false);
+        };
+
+        player.src = url;
+        player.playbackRate = Math.max(0.7, Math.min(1.5, getEffectiveSpeed(lang, 1.0)));
+
+        const maxTimer = setTimeout(() => cleanup(false), 8500);
+
+        const promise = player.play();
+        if (promise !== undefined) {
+          promise.then(() => {
+            // Actively playing audio
+          }).catch(err => {
+            console.warn('Persistent audio play rejected:', err);
+            clearTimeout(maxTimer);
+            cleanup(false);
+          });
+        }
+      });
+    }
+
+    // Unified robust speak function
+    async function speakText(text, lang = 'en-US', speedMultiplier = 1.0) {
+      state.isSpeakingTTS = true;
+      unlockAudioSession();
+      setAudioWave(true, lang.startsWith('pt') ? 'Lendo em português...' : 'Lendo em inglês...');
+      updateUIStateBadge(lang.startsWith('pt') ? 'Ouvindo tradução...' : 'Ouvindo leitura...', 'bg-indigo-500');
+
+      let success = false;
+
+      // 1. Try browser native speech
+      if (state.ttsEngine !== 'online') {
+        success = await playBrowserSpeech(text, lang, speedMultiplier);
+      }
+
+      // 2. If native speech was silent or blocked, run persistent cloud audio stream
+      if (!success) {
+        console.log('Using persistent cloud audio for:', text.slice(0, 30));
+        success = await playOnlineTts(text, lang);
+      }
+
+      setAudioWave(false);
+      state.isSpeakingTTS = false;
+      return success;
+    }
+
+    // --- SPEECH TO TEXT (STT) ---
+    const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    let recognitionTimeout = null;
+
+    if (SpeechRecognitionClass) {
+      recognition = new SpeechRecognitionClass();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+    }
+
+    function listenForSpeech(targetSentence, maxTimeoutMs = 15000) {
+      return new Promise((resolve) => {
+        if (!recognition) {
+          showToast('Navegador sem suporte a Web Speech. Use o teclado ou fallback.');
+          simulateSpeechFallback(targetSentence, resolve);
+          return;
+        }
+
+        playChime('your_turn');
+        state.isListeningMic = true;
+        updateUIStateBadge('Sua vez: fale a frase em inglês...', 'bg-emerald-500 animate-pulse');
+        setMicUI(true);
+
+        const transcriptEl = document.getElementById('userTranscriptText');
+        transcriptEl.textContent = 'Ouvindo... Pode falar a frase em inglês com naturalidade.';
+        transcriptEl.className = 'text-xs font-mono text-brand-300';
+
+        const btnFinishEarly = document.getElementById('btnFinishSpeechEarly');
+        if (btnFinishEarly) btnFinishEarly.classList.remove('hidden');
+
+        let lastSpokenText = '';
+        let resolved = false;
+        let silenceDebounceTimer = null;
+        let overallTimeoutTimer = null;
+
+        const complete = (text) => {
+          if (resolved) return;
+          resolved = true;
+          clearTimeout(silenceDebounceTimer);
+          clearTimeout(overallTimeoutTimer);
+          if (btnFinishEarly) btnFinishEarly.classList.add('hidden');
+          state.isListeningMic = false;
+          setMicUI(false);
+          try { recognition.stop(); } catch(e){}
+          resolve(text ? text.trim() : '');
+        };
+
+        if (btnFinishEarly) {
+          btnFinishEarly.onclick = () => {
+            complete(lastSpokenText);
+          };
+        }
+
+        // Configure speech recognition
+        try {
+          recognition.continuous = true;
+          recognition.interimResults = true;
+          recognition.lang = 'en-US';
+        } catch(e){}
+
+        // Resets the silence timer: waits 1.8 seconds of silence after user stops speaking
+        const armSilenceDebounce = () => {
+          clearTimeout(silenceDebounceTimer);
+          silenceDebounceTimer = setTimeout(() => {
+            if (lastSpokenText.trim()) {
+              complete(lastSpokenText);
+            }
+          }, 1800);
+        };
+
+        // CANONICAL WEB SPEECH API RESULT PROCESSING (PREVENTS DUPLICATION AND DISCONNECTED PHRASES)
+        recognition.onresult = (event) => {
+          let finalStr = '';
+          let interimStr = '';
+
+          // Crucial: Always iterate over event.results from 0 without accumulating in an external variable!
+          for (let i = 0; i < event.results.length; ++i) {
+            const res = event.results[i];
+            const text = res[0].transcript;
+            if (res.isFinal) {
+              finalStr += ' ' + text;
+            } else {
+              interimStr += ' ' + text;
+            }
+          }
+
+          const currentSpoken = (finalStr + ' ' + interimStr).replace(/\s+/g, ' ').trim();
+          if (currentSpoken) {
+            lastSpokenText = currentSpoken;
+            transcriptEl.textContent = `"${currentSpoken}"`;
+
+            // Reset silence timer
+            armSilenceDebounce();
+
+            // Intelligent early advance: if target sentence is already achieved with high accuracy
+            const sim = calculateSimilarity(targetSentence, currentSpoken);
+            if (sim.score >= state.threshold && sim.matchedCount >= sim.totalWords * 0.8) {
+              clearTimeout(silenceDebounceTimer);
+              silenceDebounceTimer = setTimeout(() => {
+                complete(currentSpoken);
+              }, 600);
+            }
+          }
+        };
+
+        recognition.onerror = (event) => {
+          console.warn('Speech recognition error event:', event.error);
+          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            showToast('Microfone sem permissão no navegador. Abrindo modo interativo...');
+            complete(lastSpokenText);
+            simulateSpeechFallback(targetSentence, resolve);
+            return;
+          }
+          if (event.error === 'no-speech' && !lastSpokenText) {
+            transcriptEl.textContent = '(Aguardando sua voz... fale no microfone)';
+          }
+        };
+
+        recognition.onend = () => {
+          if (!resolved) {
+            if (lastSpokenText.trim()) {
+              complete(lastSpokenText);
+            } else {
+              complete('');
+            }
+          }
+        };
+
+        try {
+          recognition.start();
+        } catch (e) {
+          console.warn('Recognition start failed:', e);
+          simulateSpeechFallback(targetSentence, resolve);
+          return;
+        }
+
+        overallTimeoutTimer = setTimeout(() => {
+          complete(lastSpokenText);
+        }, maxTimeoutMs);
+      });
+    }
+
+    function simulateSpeechFallback(targetSentence, resolve) {
+      const modal = document.getElementById('modalFallbackSpeech');
+      const targetDisplay = document.getElementById('fallbackTargetText');
+      const input = document.getElementById('fallbackSpokenInput');
+      const btnExact = document.getElementById('btnFallbackExact');
+      const btnSubmit = document.getElementById('btnFallbackSubmit');
+
+      targetDisplay.textContent = targetSentence;
+      input.value = '';
+      modal.classList.remove('hidden');
+
+      const cleanup = (val) => {
+        modal.classList.add('hidden');
+        btnExact.onclick = null;
+        btnSubmit.onclick = null;
+        input.onkeydown = null;
+        resolve(val || '');
+      };
+
+      btnExact.onclick = () => cleanup(targetSentence);
+      btnSubmit.onclick = () => cleanup(input.value || targetSentence);
+      input.onkeydown = (e) => {
+        if (e.key === 'Enter') cleanup(input.value || targetSentence);
+      };
+    }
+
+    // --- ROBUST SPEECH CLEANING & PHONETIC SIMILARITY ENGINE ---
+    function cleanString(str) {
+      if (!str) return '';
+      return str.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    }
+
+    // Normalizes numbers, digits, and common English spoken contractions
+    function cleanSpeech(text) {
+      if (!text) return '';
+      let t = text.toLowerCase();
+      // Normalize common spoken contractions
+      t = t.replace(/\bcan't\b/g, "cannot")
+           .replace(/\bwon't\b/g, "will not")
+           .replace(/n't\b/g, " not")
+           .replace(/'s\b/g, " is")
+           .replace(/'re\b/g, " are")
+           .replace(/'ll\b/g, " will")
+           .replace(/'ve\b/g, " have")
+           .replace(/'d\b/g, " would")
+           .replace(/[^a-z0-9\s]/g, " ");
+
+      const numMap = {
+        '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four',
+        '5': 'five', '6': 'six', '7': 'seven', '8': 'eight', '9': 'nine',
+        '10': 'ten', '1st': 'first', '2nd': 'second', '3rd': 'third'
+      };
+
+      const words = t.split(/\s+/).filter(Boolean);
+      return words.map(w => numMap[w] || w).join(' ');
+    }
+
+    function calculateSimilarity(target, spoken) {
+      const cleanTarget = cleanSpeech(target);
+      const cleanSpoken = cleanSpeech(spoken);
+      if (!cleanSpoken) return { score: 0, wordResults: [], matchedCount: 0, totalWords: 1 };
+
+      const targetWords = cleanTarget.split(/\s+/).filter(Boolean);
+      const spokenWords = cleanSpoken.split(/\s+/).filter(Boolean);
+      if (targetWords.length === 0) return { score: 100, wordResults: [], matchedCount: 0, totalWords: 0 };
+
+      // Helper for fuzzy phonetic word match (forgiving for ESL learners)
+      function isWordMatch(tw, sw) {
+        if (tw === sw) return true;
+        if (tw.length >= 3 && sw.length >= 3) {
+          if (tw.startsWith(sw) || sw.startsWith(tw)) return true;
+          // Levenshtein on single word: allows 1 phonetic slip
+          let diff = 0;
+          const minL = Math.min(tw.length, sw.length);
+          const maxL = Math.max(tw.length, sw.length);
+          if (maxL - minL <= 1) {
+            for (let i = 0; i < minL; i++) {
+              if (tw[i] !== sw[i]) diff++;
+            }
+            if (diff <= 1) return true;
+          }
+        }
+        return false;
+      }
+
+      let matchedCount = 0;
+      const spokenUsed = new Set();
+
+      const wordResults = targetWords.map((tw) => {
+        let matched = false;
+        for (let j = 0; j < spokenWords.length; j++) {
+          if (!spokenUsed.has(j) && isWordMatch(tw, spokenWords[j])) {
+            matched = true;
+            spokenUsed.add(j);
+            break;
+          }
+        }
+        if (matched) matchedCount++;
+        return { word: tw, matched };
+      });
+
+      // Word coverage percentage
+      const wordScore = Math.round((matchedCount / targetWords.length) * 100);
+
+      // Whole-sentence Levenshtein distance for word order
+      const n = cleanTarget.length;
+      const m = cleanSpoken.length;
+      const matrix = [];
+      for (let i = 0; i <= n; i++) matrix[i] = [i];
+      for (let j = 0; j <= m; j++) matrix[0][j] = j;
+
+      for (let i = 1; i <= n; i++) {
+        for (let j = 1; j <= m; j++) {
+          if (cleanTarget[i - 1] === cleanSpoken[j - 1]) {
+            matrix[i][j] = matrix[i - 1][j - 1];
+          } else {
+            matrix[i][j] = Math.min(
+              matrix[i - 1][j - 1] + 1,
+              matrix[i][j - 1] + 1,
+              matrix[i - 1][j] + 1
+            );
+          }
+        }
+      }
+      const dist = matrix[n][m];
+      const maxLen = Math.max(n, m);
+      const stringScore = Math.max(0, Math.round(((maxLen - dist) / maxLen) * 100));
+
+      // 70% word coverage + 30% sequence order: fair, encouraging, and accurate!
+      const finalScore = Math.round(wordScore * 0.7 + stringScore * 0.3);
+
+      return {
+        score: finalScore,
+        wordResults,
+        matchedCount,
+        totalWords: targetWords.length
+      };
+    }
+
+
+    // --- POST-SUCCESS WORD-BY-WORD VOCABULARY REVIEW ENGINE (UNSWALLOWED & CADENCED) ---
+    async function readWordByWordReview(sentence, stepToken) {
+      if (!state.readWordsOnSuccess || !state.isPlayingLoop || stepToken !== activeStepToken) return;
+
+      updateUIStateBadge('Revisando palavras...', 'bg-amber-500 animate-pulse');
+      showToast('Revisando palavras da sentença...');
+
+      const container = document.getElementById('literalWordsList');
+      const rawTokens = sentence.en.split(/\s+/).filter(Boolean);
+
+      for (let i = 0; i < rawTokens.length; i++) {
+        if (!state.isPlayingLoop || stepToken !== activeStepToken) break;
+
+        const token = rawTokens[i];
+        const clean = cleanString(token);
+        if (!clean || clean.length < 1) continue;
+
+        const info = getWordInfo(clean);
+        let ptWord = (info.pt && info.pt !== '...') ? info.pt.split('/')[0].trim() : '';
+        if (!ptWord) {
+          ptWord = await resolveWordTranslation(clean);
+        }
+        if (stepToken !== activeStepToken || !state.isPlayingLoop) break;
+
+        // Visual highlight on current word chip
+        const pills = container ? container.querySelectorAll('[data-word]') : [];
+        pills.forEach(p => p.classList.remove('ring-2', 'ring-amber-400', 'bg-amber-500/30', 'scale-105'));
+        if (pills[i]) {
+          pills[i].classList.add('ring-2', 'ring-amber-400', 'bg-amber-500/30', 'scale-105');
+          pills[i].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+
+        // 1. Speak word in English with clear cadenced articulation
+        await speakText(clean, 'en-US', 0.82);
+        if (stepToken !== activeStepToken || !state.isPlayingLoop) break;
+        await new Promise(r => setTimeout(r, 260));
+
+        // 2. Speak corresponding translation in Portuguese
+        if (ptWord && ptWord !== clean) {
+          await speakText(ptWord, 'pt-BR', 1.15);
+          if (stepToken !== activeStepToken || !state.isPlayingLoop) break;
+          await new Promise(r => setTimeout(r, 340));
+        }
+
+        if (pills[i]) {
+          pills[i].classList.remove('ring-2', 'ring-amber-400', 'bg-amber-500/30', 'scale-105');
+        }
+      }
+
+      // Clear any lingering highlights
+      if (container) {
+        container.querySelectorAll('[data-word]').forEach(p => p.classList.remove('ring-2', 'ring-amber-400', 'bg-amber-500/30', 'scale-105'));
+      }
+    }
+
+
+    function handleBookCompletion() {
+      stopLoop();
+      playChime('success');
+      document.getElementById('completionBookTitle').textContent = state.currentBookTitle;
+      document.getElementById('completionTotalSentences').textContent = `${state.sentences.length} sentenças`;
+      document.getElementById('completionVocabCount').textContent = `${state.savedVocab.length} palavras`;
+      document.getElementById('modalBookCompleted').classList.remove('hidden');
+
+      document.getElementById('btnRestartBookFromZero').onclick = () => {
+        document.getElementById('modalBookCompleted').classList.add('hidden');
+        state.currentIndex = 0;
+        state.streak = 0;
+        renderSentence();
+        updateBookmarkInDB(state.currentBookId, 0);
+        showToast('Livro reiniciado do início!');
+      };
+
+      document.getElementById('btnChooseAnotherBook').onclick = () => {
+        document.getElementById('modalBookCompleted').classList.add('hidden');
+        document.getElementById('modalLibrary').classList.remove('hidden');
+      };
+    }
+
+    // --- MAIN SHADOWING LOOP (RACE-CONDITION-PROOF WITH STEP TOKEN) ---
+    async function runShadowingStep() {
+      if (!state.isPlayingLoop) return;
+
+      // Assign unique token for this sentence invocation
+      activeStepToken++;
+      const currentToken = activeStepToken;
+      const isValid = () => (state.isPlayingLoop && currentToken === activeStepToken);
+
+      const current = state.sentences[state.currentIndex];
+      if (!current) {
+        showToast('Parabéns! Você completou este livro!');
+        stopLoop();
+        return;
+      }
+
+      renderSentence();
+      updatePocketDisplay();
+
+      // Highlight active card helper
+      const enCard = document.getElementById('enCardContainer');
+      const ptCard = document.getElementById('ptCardContainer');
+
+      
+      if (state.audioFlow === 'challenge') {
+        state.challengeUnlocked = false;
+        renderSentence();
+
+        // Step 1: In Challenge mode, English is shown and spoken first!
+        if (enCard) enCard.classList.add('ring-2', 'ring-brand-500/60');
+        await speakText(current.en, 'en-US', 1.0);
+        if (enCard) enCard.classList.remove('ring-2', 'ring-brand-500/60');
+        if (!isValid()) return;
+
+        // Step 2: User must speak correctly in English to unlock Portuguese!
+        let isCorrect = false;
+        let attempts = 0;
+
+        while (!isCorrect && state.isPlayingLoop) {
+          attempts++;
+          const spoken = await listenForSpeech(current.en);
+          if (!isValid()) return;
+
+          const { score, wordResults } = calculateSimilarity(current.en, spoken);
+          displayEvaluationResult(spoken, score, wordResults);
+
+          if (score >= state.threshold) {
+            isCorrect = true;
+            playChime('success');
+            state.streak++;
+            updateUIStateBadge('Desafio Superado!', 'bg-emerald-500');
+            showToast(`🏆 Correto! (${score}%) Desbloqueando tradução...`);
+
+            // REVEAL PORTUGUESE & LITERAL TRANSLATION!
+            state.challengeUnlocked = true;
+            renderSentence();
+            if (ptCard) ptCard.classList.add('ring-2', 'ring-amber-400');
+
+            // Read the Portuguese translation now that it is unlocked!
+            await new Promise(r => setTimeout(r, 400));
+            if (!state.isPlayingLoop) return;
+            if (!current.pt || current.pt.startsWith('[Tradução')) { await ensureSentenceTranslated(state.currentIndex); }
+            await speakText(current.pt, 'pt-BR', 1.0);
+            if (ptCard) ptCard.classList.remove('ring-2', 'ring-amber-400');
+
+            // If enabled, read each word and its translation!
+            if (state.readWordsOnSuccess) {
+              await readWordByWordReview(current, currentToken);
+              if (!isValid()) return;
+            } else {
+              await new Promise(r => setTimeout(r, 1200));
+              if (!state.isPlayingLoop) return;
+            }
+
+            // Advance to next sentence
+            state.challengeUnlocked = false;
+            state.currentIndex++;
+            if (state.currentIndex >= state.sentences.length) {
+              handleBookCompletion();
+              return;
+            }
+
+            renderSentence();
+            updatePocketDisplay();
+            await new Promise(r => setTimeout(r, 700));
+            if (!state.isPlayingLoop) return;
+            break;
+          } else {
+            playChime('retry');
+            state.streak = 0;
+            updateUIStateBadge('Tente novamente', 'bg-amber-500');
+
+            if (state.autoHandsFree && attempts >= 2) {
+              showToast('Modo Mãos Livres: avançando sentença.');
+              state.currentIndex++;
+              break;
+            }
+
+            if (state.repeatOnError) {
+              const speedMod = state.slowdownOnError ? 0.85 : 1.0;
+              await new Promise(r => setTimeout(r, 500));
+              if (!state.isPlayingLoop) return;
+              showToast('Repetindo sentença em inglês...');
+              await speakText(current.en, 'en-US', speedMod);
+              await new Promise(r => setTimeout(r, 400));
+            } else {
+              await new Promise(r => setTimeout(r, 800));
+            }
+          }
+        }
+
+        if (state.isPlayingLoop) {
+          runShadowingStep();
+        }
+        return;
+      }
+
+      if (state.audioFlow === 'pt_first') {
+        // Ensure sentence is translated before speaking Portuguese!
+        if (!current.pt || current.pt.startsWith('[Tradução')) {
+          await ensureSentenceTranslated(state.currentIndex);
+        }
+
+        // Step 1: Read in Portuguese (Context & Comprehension)
+        if (ptCard) ptCard.classList.add('ring-2', 'ring-indigo-500/60');
+        if (!current.pt || current.pt.startsWith('[Tradução')) { await ensureSentenceTranslated(state.currentIndex); }
+        await speakText(current.pt, 'pt-BR', 1.0);
+        if (ptCard) ptCard.classList.remove('ring-2', 'ring-indigo-500/60');
+        if (!isValid()) return;
+
+        // Small pause
+        await new Promise(r => setTimeout(r, 400));
+        if (!state.isPlayingLoop) return;
+
+        // Step 2: Read in English (Direct pronunciation model)
+        if (enCard) enCard.classList.add('ring-2', 'ring-brand-500/60');
+        await speakText(current.en, 'en-US', 1.0);
+        if (enCard) enCard.classList.remove('ring-2', 'ring-brand-500/60');
+        if (!isValid()) return;
+
+      } else if (state.audioFlow === 'sandwich') {
+        // Step 1: English
+        if (enCard) enCard.classList.add('ring-2', 'ring-brand-500/60');
+        await speakText(current.en, 'en-US', 1.0);
+        if (enCard) enCard.classList.remove('ring-2', 'ring-brand-500/60');
+        if (!isValid()) return;
+
+        await new Promise(r => setTimeout(r, 400));
+        if (!state.isPlayingLoop) return;
+
+        // Step 2: Portuguese
+        if (ptCard) ptCard.classList.add('ring-2', 'ring-indigo-500/60');
+        if (!current.pt || current.pt.startsWith('[Tradução')) { await ensureSentenceTranslated(state.currentIndex); }
+        await speakText(current.pt, 'pt-BR', 1.0);
+        if (ptCard) ptCard.classList.remove('ring-2', 'ring-indigo-500/60');
+        if (!isValid()) return;
+
+        await new Promise(r => setTimeout(r, 400));
+        if (!state.isPlayingLoop) return;
+
+        // Step 3: English again
+        if (enCard) enCard.classList.add('ring-2', 'ring-brand-500/60');
+        await speakText(current.en, 'en-US', 1.0);
+        if (enCard) enCard.classList.remove('ring-2', 'ring-brand-500/60');
+        if (!isValid()) return;
+
+      } else {
+        // 'en_first'
+        if (enCard) enCard.classList.add('ring-2', 'ring-brand-500/60');
+        await speakText(current.en, 'en-US', 1.0);
+        if (enCard) enCard.classList.remove('ring-2', 'ring-brand-500/60');
+        if (!isValid()) return;
+
+        await new Promise(r => setTimeout(r, 400));
+        if (!state.isPlayingLoop) return;
+
+        if (ptCard) ptCard.classList.add('ring-2', 'ring-indigo-500/60');
+        if (!current.pt || current.pt.startsWith('[Tradução')) { await ensureSentenceTranslated(state.currentIndex); }
+        await speakText(current.pt, 'pt-BR', 1.0);
+        if (ptCard) ptCard.classList.remove('ring-2', 'ring-indigo-500/60');
+        if (!isValid()) return;
+      }
+
+      // Step 3: Ask user to repeat in English
+      let isCorrect = false;
+      let attempts = 0;
+
+      while (!isCorrect && isValid()) {
+        attempts++;
+        const spoken = await listenForSpeech(current.en);
+        if (!isValid()) return;
+
+        const { score, wordResults } = calculateSimilarity(current.en, spoken);
+        displayEvaluationResult(spoken, score, wordResults);
+
+        if (score >= state.threshold) {
+          isCorrect = true;
+          playChime('success');
+          state.streak++;
+          updateUIStateBadge('Excelente!', 'bg-emerald-500');
+          showToast(`Correto! (${score}%) Avançando...`);
+          
+          await new Promise(r => setTimeout(r, 1200));
+          if (!state.isPlayingLoop) return;
+          
+          // Advance to next sentence!
+          state.currentIndex++;
+          if (state.currentIndex >= state.sentences.length) {
+            handleBookCompletion();
+            return;
+          }
+          
+          // Re-render immediately so the user sees the new sentence card
+          renderSentence();
+          updatePocketDisplay();
+
+          // Crucial: 700ms cooldown so the microphone completely releases audio hardware
+          // before the next sentence TTS triggers!
+          await new Promise(r => setTimeout(r, 700));
+          if (!state.isPlayingLoop) return;
+        } else {
+          // Error handling
+          playChime('retry');
+          state.streak = 0;
+          updateUIStateBadge('Tente novamente', 'bg-amber-500');
+
+          if (state.autoHandsFree && attempts >= 2) {
+            showToast('Modo Mãos Livres: avançando sentença.');
+            state.currentIndex++;
+            break;
+          }
+
+          if (state.repeatOnError) {
+            const speedMod = state.slowdownOnError ? 0.85 : 1.0;
+            await new Promise(r => setTimeout(r, 500));
+            if (!state.isPlayingLoop) return;
+            showToast('Repetindo sentença em inglês...');
+            await speakText(current.en, 'en-US', speedMod);
+            await new Promise(r => setTimeout(r, 400));
+          } else {
+            await new Promise(r => setTimeout(r, 800));
+          }
+        }
+      }
+
+      // Continue next step in loop
+      if (state.isPlayingLoop) {
+        runShadowingStep();
+      }
+    }
+
+    function startLoop() {
+      unlockAudioSession();
+      state.isPlayingLoop = true;
+      document.getElementById('iconLoopPlay').classList.add('hidden');
+      document.getElementById('iconLoopPause').classList.remove('hidden');
+      document.getElementById('textLoopBtn').textContent = 'Pausar Treino';
+      document.getElementById('btnToggleLoop').classList.remove('from-brand-600', 'to-indigo-600');
+      document.getElementById('btnToggleLoop').classList.add('from-amber-600', 'to-orange-600');
+      
+      runShadowingStep();
+    }
+
+    function stopLoop() {
+      state.isPlayingLoop = false;
+      stopAllAudio();
+      updateUIStateBadge('Pausado', 'bg-slate-700');
+      document.getElementById('iconLoopPlay').classList.remove('hidden');
+      document.getElementById('iconLoopPause').classList.add('hidden');
+      document.getElementById('textLoopBtn').textContent = 'Iniciar Treino';
+      document.getElementById('btnToggleLoop').classList.remove('from-amber-600', 'to-orange-600');
+      document.getElementById('btnToggleLoop').classList.add('from-brand-600', 'to-indigo-600');
+    }
+
+    // --- WAKE LOCK & POCKET MODE ---
+    async function enterPocketMode() {
+      state.inPocketMode = true;
+      document.getElementById('pocketModeOverlay').classList.remove('hidden');
+      document.getElementById('pocketModeOverlay').classList.add('flex');
+
+      // Request Screen Wake Lock API
+      try {
+        if ('wakeLock' in navigator) {
+          state.wakeLockSentinel = await navigator.wakeLock.request('screen');
+          state.wakeLockSentinel.addEventListener('release', () => {
+            console.log('Screen Wake Lock was released');
+          });
+        }
+      } catch (err) {
+        console.warn('Wake Lock error:', err);
+      }
+
+      if (!state.isPlayingLoop) {
+        startLoop();
+      }
+      updatePocketDisplay();
+    }
+
+    function exitPocketMode() {
+      state.inPocketMode = false;
+      document.getElementById('pocketModeOverlay').classList.add('hidden');
+      document.getElementById('pocketModeOverlay').classList.remove('flex');
+
+      if (state.wakeLockSentinel) {
+        try {
+          state.wakeLockSentinel.release();
+          state.wakeLockSentinel = null;
+        } catch(e){}
+      }
+    }
+
+    function updatePocketDisplay() {
+      if (!state.inPocketMode) return;
+      document.getElementById('pocketSentenceIndex').textContent = `Sentença ${state.currentIndex + 1} / ${state.sentences.length}`;
+      document.getElementById('pocketStatusText').textContent = state.isListeningMic ? 'Sua vez: fale nos fones de ouvido...' : 'Ouvindo leitura do livro...';
+    }
+
+    // --- RENDER & UI UPDATES ---
+    function renderSentence() {
+      const current = state.sentences[state.currentIndex];
+      if (!current) return;
+
+      // Ensure real-time translation for custom PDFs
+      ensureSentenceTranslated(state.currentIndex);
+      // Persist reading bookmark automatically on every sentence change!
+      if (state.currentBookId) {
+        updateBookmarkInDB(state.currentBookId, state.currentIndex);
+      }
+
+      const enContainer = document.getElementById('enSentenceText');
+      enContainer.innerHTML = '';
+
+      // Split into interactive word chips
+      const words = current.en.split(' ');
+      words.forEach(w => {
+        const span = document.createElement('span');
+        span.textContent = w + ' ';
+        span.className = 'cursor-pointer hover:text-brand-400 hover:underline transition-colors';
+        span.title = 'Clique para salvar no vocabulário';
+        span.onclick = () => openDictionaryModal(w.replace(/[^a-zA-Z]/g, ''), current.en);
+        enContainer.appendChild(span);
+      });
+
+      const ptCard = document.getElementById('ptCardContainer');
+      const ptText = document.getElementById('ptSentenceText');
+
+      if (state.audioFlow === 'challenge' && !state.challengeUnlocked) {
+        ptText.classList.add('hidden');
+        let lockNotice = document.getElementById('ptChallengeLockNotice');
+        if (!lockNotice) {
+          lockNotice = document.createElement('div');
+          lockNotice.id = 'ptChallengeLockNotice';
+          lockNotice.className = 'flex items-center gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-semibold mt-1';
+          lockNotice.innerHTML = `
+            <svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            <span>🔒 Modo Desafio: Fale em inglês para desbloquear a tradução!</span>
+          `;
+          ptCard.appendChild(lockNotice);
+        }
+        lockNotice.classList.remove('hidden');
+      } else {
+        ptText.classList.remove('hidden');
+        ptText.textContent = current.pt;
+        const lockNotice = document.getElementById('ptChallengeLockNotice');
+        if (lockNotice) lockNotice.classList.add('hidden');
+      }
+
+      document.getElementById('sentenceIndexDisplay').textContent = `Sentença ${state.currentIndex + 1} / ${state.sentences.length}`;
+      renderLiteralTranslationCard();
+      document.getElementById('bookTitleDisplay').textContent = state.currentBookTitle;
+
+      // Progress bar
+      const pct = Math.round(((state.currentIndex + 1) / state.sentences.length) * 100);
+      document.getElementById('progressBar').style.width = `${pct}%`;
+
+      // Streak badge
+      const streakBadge = document.getElementById('streakBadge');
+      if (state.streak > 1) {
+        streakBadge.classList.remove('hidden');
+        streakBadge.classList.add('inline-flex');
+        document.getElementById('streakCount').textContent = state.streak;
+      } else {
+        streakBadge.classList.add('hidden');
+      }
+
+      // Reset feedback container
+      document.getElementById('scoreBadge').classList.add('hidden');
+      document.getElementById('wordComparisonRow').classList.add('hidden');
+      document.getElementById('userTranscriptText').textContent = 'Aguardando próxima fala...';
+      document.getElementById('userTranscriptText').className = 'text-sm font-mono text-slate-400 italic';
+    }
+
+    function displayEvaluationResult(spoken, score, wordResults) {
+      const scoreBadge = document.getElementById('scoreBadge');
+      scoreBadge.classList.remove('hidden');
+      scoreBadge.textContent = `${score}% de precisão`;
+
+      if (score >= state.threshold) {
+        scoreBadge.className = 'text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+      } else {
+        scoreBadge.className = 'text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30';
+      }
+
+      const compRow = document.getElementById('wordComparisonRow');
+      compRow.innerHTML = '';
+      compRow.classList.remove('hidden');
+
+      wordResults.forEach(item => {
+        const chip = document.createElement('span');
+        chip.textContent = item.word;
+        if (item.matched) {
+          chip.className = 'px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/80';
+        } else {
+          chip.className = 'px-1.5 py-0.5 rounded bg-rose-950/80 text-rose-300 border border-rose-800/80';
+        }
+        compRow.appendChild(chip);
+      });
+    }
+
+    function updateUIStateBadge(text, colorClass) {
+      const badge = document.getElementById('stateBadge');
+      badge.className = `inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold text-white ${colorClass}`;
+      badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-white"></span> ${text}`;
+    }
+
+    function setMicUI(active) {
+      const micRing = document.getElementById('micLiveRing');
+      const micDot = document.getElementById('micDot');
+      const label = document.getElementById('feedbackLabel');
+      if (active) {
+        micRing.classList.remove('hidden');
+        micDot.className = 'w-2 h-2 rounded-full bg-red-500 animate-ping';
+        label.textContent = 'Microfone aberto — Fale agora!';
+      } else {
+        micRing.classList.add('hidden');
+        micDot.className = 'w-2 h-2 rounded-full bg-slate-600';
+        label.textContent = 'Aguardando sua vez...';
+      }
+    }
+
+    function showToast(msg) {
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-24 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-700 text-white text-xs font-semibold px-4 py-2 rounded-xl shadow-xl z-50 transition-all duration-300 opacity-0 transform translate-y-2';
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      requestAnimationFrame(() => {
+        toast.classList.remove('opacity-0', 'translate-y-2');
+      });
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 2500);
+    }
+
+    // --- VOCABULARY & NOTEBOOK ---
+    function saveVocabularyItem(word, sentence) {
+      if (!word) return;
+      const exists = state.savedVocab.some(v => v.word.toLowerCase() === word.toLowerCase());
+      if (exists) {
+        showToast(`"${word}" já está no seu caderno.`);
+        return;
+      }
+      state.savedVocab.unshift({ word, sentence, date: new Date().toLocaleDateString('pt-BR') });
+      saveVocabToStorage();
+      showToast(`Palavra "${word}" salva no caderno!`);
+    }
+
+    function saveCurrentSentence() {
+      const current = state.sentences[state.currentIndex];
+      if (!current) return;
+      state.savedVocab.unshift({ word: 'Frase Completa', sentence: `${current.en} — (${current.pt})`, date: new Date().toLocaleDateString('pt-BR') });
+      saveVocabToStorage();
+      showToast('Frase salva com sucesso!');
+    }
+
+    function saveVocabToStorage() {
+      try {
+        localStorage.setItem('shadowreader_vocab', JSON.stringify(state.savedVocab));
+      } catch(e){}
+      updateVocabBadge();
+      renderVocabModal();
+    }
+
+    function updateVocabBadge() {
+      const badge = document.getElementById('savedVocabBadge');
+      if (state.savedVocab.length > 0) {
+        badge.classList.remove('hidden');
+        badge.textContent = state.savedVocab.length;
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+
+    function renderVocabModal() {
+      const list = document.getElementById('savedVocabList');
+      list.innerHTML = '';
+      if (state.savedVocab.length === 0) {
+        list.innerHTML = '<p class="text-xs text-slate-500 text-center py-6">Nenhuma frase salva ainda.</p>';
+        return;
+      }
+
+      state.savedVocab.forEach((item, idx) => {
+        const div = document.createElement('div');
+        div.className = 'p-3 rounded-xl bg-slate-800/60 border border-slate-700/60 flex items-start justify-between gap-2';
+        div.innerHTML = `
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1.5">
+              <span class="font-bold text-brand-300 text-xs">${item.word}</span>
+              <button class="p-0.5 rounded text-slate-400 hover:text-white transition" onclick="speakText('${item.word.replace(/['"]/g, '')}', 'en-US', 0.85)" title="Ouvir pronúncia">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg>
+              </button>
+            </div>
+            <p class="text-xs text-slate-300 mt-0.5 leading-relaxed break-words">${item.sentence}</p>
+            <span class="text-[10px] text-slate-500">${item.date}</span>
+          </div>
+          <button class="text-slate-500 hover:text-rose-400 p-1 shrink-0" onclick="deleteVocabItem(${idx})" title="Remover termo">✕</button>
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    window.deleteVocabItem = function(idx) {
+      state.savedVocab.splice(idx, 1);
+      saveVocabToStorage();
+    };
+
+    // --- PDF PARSER (PDF.js) ---
+    async function handlePdfUpload(file) {
+      const statusEl = document.getElementById('pdfLoadingStatus');
+      statusEl.classList.remove('hidden');
+      statusEl.textContent = 'Carregando arquivo PDF...';
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        
+        statusEl.textContent = `Extraindo texto de ${pdf.numPages} páginas...`;
+        let fullText = '';
+
+        // Non-blocking chunked page extraction for large books
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const strings = content.items.map(item => item.str);
+          fullText += strings.join(' ') + ' ';
+
+          if (i % 4 === 0 || i === pdf.numPages) {
+            statusEl.textContent = `Processando: página ${i} de ${pdf.numPages} (${Math.round((i / pdf.numPages) * 100)}%)...`;
+            await new Promise(r => setTimeout(r, 0)); // yield to UI thread so large books never freeze
+          }
+        }
+
+        // Clean & segment sentences
+        statusEl.textContent = 'Segmentando sentenças do livro...';
+        const cleaned = fullText
+          .replace(/(\r\n|\n|\r)/gm, ' ')
+          .replace(/\s+/g, ' ')
+          .replace(/([a-z])-\s+([a-z])/gi, '$1$2') // rejoin hyphenated words across lines
+          .trim();
+
+        // Split sentences respecting common abbreviations
+        const rawSentences = cleaned.match(/[^.!?]+[.!?]+(\s|$)/g) || [cleaned];
+        const parsed = [];
+
+        for (const s of rawSentences) {
+          const trimmed = s.trim();
+          // Filter out short headers or page numbers, and super long unformatted blobs
+          if (trimmed.length > 12 && trimmed.length < 380) {
+            parsed.push({
+              en: trimmed,
+              pt: '' // Will be translated on demand + pre-fetched in background
+            });
+          }
+        }
+
+        if (parsed.length === 0) {
+          throw new Error('Nenhuma sentença legível encontrada no PDF.');
+        }
+
+        const bookId = 'book_' + Date.now();
+        state.currentBookId = bookId;
+        state.currentBookTitle = file.name.replace(/\.[^/.]+$/, "");
+        state.sentences = parsed;
+        state.currentIndex = 0;
+        state.streak = 0;
+
+        // Persist book and starting bookmark in IndexedDB immediately!
+        await saveBookToDB({
+          id: bookId,
+          title: state.currentBookTitle,
+          sentences: parsed,
+          currentIndex: 0
+        });
+
+        statusEl.textContent = 'Traduzindo primeira sentença...';
+        await ensureSentenceTranslated(0);
+
+        showToast(`Livro "${state.currentBookTitle}" salvo na memória! O app lembrará de onde você parou.`);
+        document.getElementById('modalLibrary').classList.add('hidden');
+        renderSentence();
+      } catch (err) {
+        console.error('PDF parsing error:', err);
+        showToast('Erro ao processar PDF: ' + err.message);
+      } finally {
+        statusEl.classList.add('hidden');
+      }
+    }
+
+    // --- RENDER SAMPLE BOOKS IN MODAL ---
+    function renderSampleBooks() {
+      const container = document.getElementById('sampleBooksList');
+      container.innerHTML = '';
+
+      SAMPLE_BOOKS.forEach(b => {
+        const card = document.createElement('div');
+        card.className = 'p-3 rounded-xl border border-slate-800 bg-slate-800/40 hover:bg-slate-800 hover:border-slate-700 cursor-pointer transition flex items-center justify-between';
+        card.innerHTML = `
+          <div>
+            <h5 class="text-sm font-bold text-white">${b.title}</h5>
+            <p class="text-xs text-slate-400">${b.author} • ${b.sentences.length} sentenças de estudo</p>
+          </div>
+          <button class="px-3 py-1.5 rounded-lg bg-brand-600/30 hover:bg-brand-600 text-brand-300 hover:text-white text-xs font-semibold transition">
+            Estudar
+          </button>
+        `;
+        card.onclick = async () => {
+          state.currentBookId = b.id;
+          state.currentBookTitle = b.title;
+          state.sentences = [...b.sentences];
+          // Check if there is already a saved bookmark for this sample book
+          const savedIndex = parseInt(localStorage.getItem(`sr_bookmark_${b.id}`) || '0', 10);
+          state.currentIndex = isNaN(savedIndex) ? 0 : Math.min(savedIndex, b.sentences.length - 1);
+          state.streak = 0;
+
+          await saveBookToDB({
+            id: b.id,
+            title: b.title,
+            author: b.author,
+            sentences: b.sentences,
+            currentIndex: state.currentIndex
+          });
+
+          renderSentence();
+          document.getElementById('modalLibrary').classList.add('hidden');
+          showToast(`Lendo "${b.title}" na sentença ${state.currentIndex + 1}`);
+        };
+        container.appendChild(card);
+      });
+    }
+
+    // --- EVENT LISTENERS ---
+    document.addEventListener('DOMContentLoaded', () => {
+      renderSentence();
+      renderSampleBooks();
+      renderSavedBooksList();
+      initSessionRestore();
+      checkInitialMicPermission();
+      restoreSettings();
+
+      // Upfront mic banner trigger
+      const bannerBtn = document.getElementById('btnAllowMicBanner');
+      if (bannerBtn) {
+        bannerBtn.onclick = () => requestMicrophonePermission(true);
+      }
+      updateVocabBadge();
+
+      // Test Audio & Unlock Speech Button
+      document.getElementById('btnTestAudio').onclick = async () => {
+        playChime('success');
+        showToast('Testando áudio... Aumente o volume se necessário.');
+        const ok = await speakText("Audio test. Welcome to Shadow Reader!", "en-US", 1.0);
+        if (ok) {
+          showToast('Som funcionando perfeitamente!');
+        } else {
+          showToast('Aviso: Ative o modo "Áudio Nuvem" nas configurações.');
+        }
+      };
+
+      // TTS Engine Radio Listener
+      document.querySelectorAll('input[name="ttsEngine"]').forEach(r => {
+        r.onchange = (e) => {
+          saveSettings();
+          state.ttsEngine = e.target.value;
+          showToast(`Motor de voz alterado para: ${state.ttsEngine === 'online' ? 'Áudio Nuvem' : 'Automático'}`);
+        };
+      });
+
+
+      // Dictionary Modal Close
+      const closeDict = () => document.getElementById('modalDictionary').classList.add('hidden');
+      document.getElementById('btnCloseDictModal').onclick = closeDict;
+      document.getElementById('btnDictCloseBottom').onclick = closeDict;
+      document.getElementById('modalDictionary').onclick = (e) => {
+        if (e.target.id === 'modalDictionary') closeDict();
+      };
+
+      // Controls
+      document.getElementById('btnToggleLoop').onclick = async () => {
+        if (state.isPlayingLoop) {
+          stopLoop();
+        } else {
+          // Request microphone authorization upfront before starting the loop!
+          if (!state.micPermissionGranted) {
+            await requestMicrophonePermission(false);
+          }
+          startLoop();
+        }
+      };
+
+      // Bulletproof Sentence Navigation: Instant Audio Kill & Zero Overlap
+      function navigateSentence(delta) {
+        const newIndex = state.currentIndex + delta;
+        if (newIndex >= 0 && newIndex < state.sentences.length) {
+          const wasPlaying = state.isPlayingLoop;
+          
+          // Stop and kill all active speech, audio streams and microphone immediately!
+          state.isPlayingLoop = false;
+          stopAllAudio();
+
+          state.currentIndex = newIndex;
+          state.challengeUnlocked = false;
+          renderSentence();
+
+          if (wasPlaying) {
+            setTimeout(() => {
+              state.isPlayingLoop = true;
+              runShadowingStep();
+            }, 250);
+          }
+        }
+      }
+
+      document.getElementById('btnPrevSentence').onclick = () => navigateSentence(-1);
+      document.getElementById('btnNextSentence').onclick = () => navigateSentence(1);
+
+      document.getElementById('btnPlayEn').onclick = () => {
+        const curr = state.sentences[state.currentIndex];
+        if (curr) speakText(curr.en, 'en-US');
+      };
+
+      document.getElementById('btnPlayPt').onclick = () => {
+        const curr = state.sentences[state.currentIndex];
+        if (curr) speakText(curr.pt, 'pt-BR');
+      };
+
+      document.getElementById('btnManualMic').onclick = async () => {
+        const curr = state.sentences[state.currentIndex];
+        if (!curr) return;
+        const spoken = await listenForSpeech(curr.en);
+        const { score, wordResults } = calculateSimilarity(curr.en, spoken);
+        displayEvaluationResult(spoken, score, wordResults);
+        if (score >= state.threshold) {
+          playChime('success');
+          showToast('Excelente pronúncia!');
+        } else {
+          playChime('retry');
+          showToast('Tente mais uma vez.');
+        }
+      };
+
+      document.getElementById('btnSaveCurrentSentence').onclick = saveCurrentSentence;
+
+      // Quick Toggles & Flow Selector
+      // Settings Page Handlers (All settings centralized inside modalSettings)
+      const flowRadios = document.querySelectorAll('input[name="audioFlow"]');
+      flowRadios.forEach(r => {
+        if (r.value === state.audioFlow) r.checked = true;
+        r.onchange = (e) => {
+          saveSettings();
+          state.audioFlow = e.target.value;
+          state.challengeUnlocked = false;
+          renderSentence();
+          const modeLabels = {
+            'challenge': '🏆 Modo Desafio',
+            'pt_first': 'Português 1º (Padrão)',
+            'en_first': 'Inglês 1º',
+            'sandwich': 'Sanduíche (EN-PT-EN)'
+          };
+          showToast(`Modalidade alterada: ${modeLabels[state.audioFlow] || state.audioFlow}`);
+        };
+      });
+
+      const cfgRepeat = document.getElementById('cfgRepeatOnError');
+      if (cfgRepeat) {
+        cfgRepeat.checked = state.repeatOnError;
+        cfgRepeat.onchange = (e) => { state.repeatOnError = e.target.checked; saveSettings(); };
+      }
+
+      const cfgSlowdown = document.getElementById('cfgSlowdownOnError');
+      if (cfgSlowdown) {
+        cfgSlowdown.checked = state.slowdownOnError;
+        cfgSlowdown.onchange = (e) => { state.slowdownOnError = e.target.checked; saveSettings(); };
+      }
+
+      const cfgReadWords = document.getElementById('cfgReadWordsOnSuccess');
+      if (cfgReadWords) {
+        cfgReadWords.checked = state.readWordsOnSuccess;
+        cfgReadWords.onchange = (e) => {
+          saveSettings();
+          state.readWordsOnSuccess = e.target.checked;
+          showToast(`Revisão palavra por palavra: ${state.readWordsOnSuccess ? 'Ativada' : 'Desativada'}`);
+        };
+      }
+
+      // Modals
+      document.getElementById('btnSettingsModal').onclick = () => {
+        document.getElementById('modalSettings').classList.remove('hidden');
+      };
+
+      document.getElementById('btnLibraryModal').onclick = () => {
+        document.getElementById('modalLibrary').classList.remove('hidden');
+      };
+
+      document.getElementById('btnVocabModal').onclick = () => {
+        renderVocabModal();
+        document.getElementById('modalVocab').classList.remove('hidden');
+      };
+
+      document.querySelectorAll('.close-modal').forEach(btn => {
+        btn.onclick = () => {
+          document.querySelectorAll('#modalSettings, #modalLibrary, #modalVocab').forEach(m => m.classList.add('hidden'));
+        };
+      });
+
+      // Pocket Mode Trigger
+      document.getElementById('btnPocketMode').onclick = enterPocketMode;
+      document.getElementById('btnExitPocketMode').onclick = exitPocketMode;
+      document.getElementById('pocketModeOverlay').onclick = (e) => {
+        if (e.target.id === 'pocketModeOverlay') exitPocketMode();
+      };
+
+      // PDF Upload
+      const dropZone = document.getElementById('pdfDropZone');
+      const fileInput = document.getElementById('pdfFileInput');
+      dropZone.onclick = () => fileInput.click();
+      fileInput.onchange = (e) => {
+        if (e.target.files.length > 0) handlePdfUpload(e.target.files[0]);
+      };
+
+
+      // Keyboard Accessibility Shortcuts
+      window.addEventListener('keydown', (e) => {
+        // Ignore if user is currently typing in an input
+        if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+
+        if (e.code === 'Space') {
+          e.preventDefault();
+          document.getElementById('btnToggleLoop').click();
+        } else if (e.code === 'ArrowRight') {
+          e.preventDefault();
+          navigateSentence(1);
+        } else if (e.code === 'ArrowLeft') {
+          e.preventDefault();
+          navigateSentence(-1);
+        } else if (e.code === 'KeyR') {
+          e.preventDefault();
+          document.getElementById('btnPlayEn').click();
+        } else if (e.code === 'KeyT') {
+          e.preventDefault();
+          document.getElementById('btnPlayPt').click();
+        } else if (e.code === 'KeyM') {
+          e.preventDefault();
+          document.getElementById('btnManualMic').click();
+        } else if (e.code === 'Escape') {
+          document.querySelectorAll('#modalSettings, #modalLibrary, #modalVocab, #modalDictionary, #modalBookCompleted, #modalFallbackSpeech').forEach(m => m.classList.add('hidden'));
+        }
+      });
+
+      // Drag and drop for PDF
+      dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('border-brand-500'); };
+      dropZone.ondragleave = () => { dropZone.classList.remove('border-brand-500'); };
+      dropZone.ondrop = (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('border-brand-500');
+        if (e.dataTransfer.files.length > 0) handlePdfUpload(e.dataTransfer.files[0]);
+      };
+
+
+
+      document.getElementById('cfgRepeatOnError').onchange = (e) => {
+        state.repeatOnError = e.target.checked;
+      };
+
+      document.getElementById('cfgSlowdownOnError').onchange = (e) => {
+        state.slowdownOnError = e.target.checked;
+      };
+
+      document.getElementById('cfgThresholdSlider').oninput = (e) => {
+        state.threshold = parseInt(e.target.value, 10);
+        saveSettings();
+        const label = state.threshold <= 60 ? 'Fácil' : state.threshold >= 85 ? 'Rigoroso' : 'Equilibrado';
+        document.getElementById('cfgThresholdDisplay').textContent = `${state.threshold}% (${label})`;
+      };
+
+      // Independent Speech Speed Sliders
+      const enSlider = document.getElementById('cfgSpeedEnSlider');
+      const ptSlider = document.getElementById('cfgSpeedPtSlider');
+      const enDisplay = document.getElementById('cfgSpeedEnDisplay');
+      const ptDisplay = document.getElementById('cfgSpeedPtDisplay');
+
+      if (enSlider) {
+        enSlider.value = state.ttsSpeedEn || 0.85;
+        enDisplay.textContent = `${enSlider.value}x (${parseFloat(enSlider.value) <= 0.8 ? 'Pausada' : parseFloat(enSlider.value) <= 0.95 ? 'Cadenciada' : 'Rápida'})`;
+        enSlider.oninput = (e) => {
+          saveSettings();
+          state.ttsSpeedEn = parseFloat(e.target.value);
+          const label = state.ttsSpeedEn <= 0.8 ? 'Pausada' : state.ttsSpeedEn <= 0.95 ? 'Cadenciada' : 'Rápida';
+          enDisplay.textContent = `${state.ttsSpeedEn}x (${label})`;
+        };
+      }
+
+      if (ptSlider) {
+        ptSlider.value = state.ttsSpeedPt || 1.15;
+        ptDisplay.textContent = `${ptSlider.value}x (${parseFloat(ptSlider.value) <= 1.0 ? 'Moderada' : parseFloat(ptSlider.value) <= 1.25 ? 'Natural fluida' : 'Rápida'})`;
+        ptSlider.oninput = (e) => {
+          saveSettings();
+          state.ttsSpeedPt = parseFloat(e.target.value);
+          const label = state.ttsSpeedPt <= 1.0 ? 'Moderada' : state.ttsSpeedPt <= 1.25 ? 'Natural fluida' : 'Rápida';
+          ptDisplay.textContent = `${state.ttsSpeedPt}x (${label})`;
+        };
+      }
+
+      document.getElementById('cfgAudioBeeps').onchange = (e) => {
+        state.audioBeeps = e.target.checked;
+        saveSettings();
+      };
+
+      document.getElementById('cfgAutoHandsFree').onchange = (e) => {
+        state.autoHandsFree = e.target.checked;
+        saveSettings();
+      };
+
+      document.getElementById('btnClearVocab').onclick = () => {
+        state.savedVocab = [];
+        saveVocabToStorage();
+      };
+
+      document.getElementById('btnExportVocab').onclick = () => {
+        if (state.savedVocab.length === 0) {
+          showToast('Nenhuma palavra salva para exportar.');
+          return;
+        }
+        const text = state.savedVocab.map(v => `${v.word}\t${v.sentence}\t${v.date}`).join('\n');
+        const blob = new Blob([text], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `shadowreader_vocab_${new Date().toISOString().slice(0, 10)}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+    });
+  </script>
+
+  <!-- PERSISTENT GLOBAL AUDIO PLAYER (PREVENTS AUTOPLAY LOCKOUT) -->
+  <audio id="globalAudioPlayer" preload="auto" class="hidden"></audio>
+</body>
+</html>

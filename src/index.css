@@ -1,0 +1,277 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
+  --color-brand-950: #1e1b4b;
+}
+
+/* ==========================================================================
+   GLOBAL TEXT SCALE (Customizable 85%–135%, Default 110% for comfortable reading)
+   Scales all text tokens & arbitrary micro-text without breaking layout breakpoints
+   ========================================================================== */
+:root {
+  --app-font-scale: 1.1;
+  --text-xs: calc(0.75rem * var(--app-font-scale, 1.1));
+  --text-sm: calc(0.875rem * var(--app-font-scale, 1.1));
+  --text-base: calc(1rem * var(--app-font-scale, 1.1));
+  --text-lg: calc(1.125rem * var(--app-font-scale, 1.1));
+  --text-xl: calc(1.25rem * var(--app-font-scale, 1.1));
+  --text-2xl: calc(1.5rem * var(--app-font-scale, 1.1));
+  --text-3xl: calc(1.875rem * var(--app-font-scale, 1.1));
+  --text-4xl: calc(2.25rem * var(--app-font-scale, 1.1));
+}
+
+html {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+html,
+body,
+#root {
+  overflow-x: hidden;
+  max-width: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body.app-viewport-shell {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  height: var(--app-dvh, 100dvh);
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+button,
+[role="button"],
+a,
+select,
+input[type="checkbox"],
+input[type="radio"] {
+  touch-action: manipulation;
+}
+
+body {
+  font-size: calc(1rem * var(--app-font-scale, 1.1));
+}
+
+.text-\[9px\] {
+  font-size: calc(9px * var(--app-font-scale, 1.1));
+}
+
+.text-\[10px\] {
+  font-size: calc(10px * var(--app-font-scale, 1.1));
+}
+
+.text-\[11px\] {
+  font-size: calc(11px * var(--app-font-scale, 1.1));
+}
+
+/* ==========================================================================
+   6 READING THEMES (Escuro, Claro, Sépia, Floresta, Oceano, Ametista)
+   ========================================================================== */
+
+/* 1. ESCURO (Nocturnal Deep Slate — True Dark) */
+[data-theme="dark"] {
+  --color-slate-950: #060a12;
+  --color-slate-900: #0b111e;
+  --color-slate-800: #151f32;
+  --color-slate-700: #293852;
+  --color-slate-600: #475569;
+  --color-slate-500: #64748b;
+  --color-slate-400: #94a3b8;
+  --color-slate-300: #cbd5e1;
+  --color-slate-200: #e2e8f0;
+  --color-slate-100: #f1f5f9;
+  --color-white: #ffffff;
+}
+
+/* 2. CLARO (Daylight High-Contrast Paper — True Light) */
+[data-theme="light"] {
+  --color-slate-950: #e2e8f0;
+  --color-slate-900: #f1f5f9;
+  --color-slate-800: #ffffff;
+  --color-slate-700: #cbd5e1;
+  --color-slate-600: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-400: #475569;
+  --color-slate-300: #334155;
+  --color-slate-200: #1e293b;
+  --color-slate-100: #0f172a;
+  --color-white: #0f172a;
+
+  --color-brand-200: #3730a3;
+  --color-brand-300: #4338ca;
+  --color-brand-400: #4f46e5;
+  --color-indigo-100: #1e1b4b;
+  --color-indigo-200: #312e81;
+  --color-indigo-300: #3730a3;
+  --color-indigo-400: #4338ca;
+  --color-amber-200: #92400e;
+  --color-amber-300: #b45309;
+  --color-amber-400: #d97706;
+  --color-emerald-200: #065f46;
+  --color-emerald-300: #047857;
+  --color-emerald-400: #059669;
+  --color-emerald-950: #d1fae5;
+  --color-rose-300: #be123c;
+  --color-rose-950: #ffe4e6;
+}
+
+/* 3. SÉPIA (Warm Literary Parchment / Kindle Feel) */
+[data-theme="sepia"] {
+  --color-slate-950: #dfd3b8;
+  --color-slate-900: #efe5ce;
+  --color-slate-800: #faf3e3;
+  --color-slate-700: #cbbba0;
+  --color-slate-600: #a6957a;
+  --color-slate-500: #7d6d56;
+  --color-slate-400: #5c4e3b;
+  --color-slate-300: #423627;
+  --color-slate-200: #2b2117;
+  --color-slate-100: #1c150e;
+  --color-white: #1c150e;
+
+  --color-brand-200: #3730a3;
+  --color-brand-300: #4338ca;
+  --color-brand-400: #4f46e5;
+  --color-indigo-100: #1e1b4b;
+  --color-indigo-200: #312e81;
+  --color-indigo-300: #3730a3;
+  --color-indigo-400: #4338ca;
+  --color-amber-200: #78350f;
+  --color-amber-300: #92400e;
+  --color-amber-400: #b45309;
+  --color-emerald-200: #065f46;
+  --color-emerald-300: #047857;
+  --color-emerald-400: #059669;
+  --color-emerald-950: #d1fae5;
+  --color-rose-300: #be123c;
+  --color-rose-950: #ffe4e6;
+}
+
+/* 4. FLORESTA (Deep Botanical Emerald Night) */
+[data-theme="forest"] {
+  --color-slate-950: #04100c;
+  --color-slate-900: #071a14;
+  --color-slate-800: #0f2920;
+  --color-slate-700: #1e4638;
+  --color-slate-600: #2d6350;
+  --color-slate-500: #528c78;
+  --color-slate-400: #84b8a5;
+  --color-slate-300: #b5ded0;
+  --color-slate-200: #daf3ea;
+  --color-slate-100: #ecfdf5;
+  --color-white: #ffffff;
+}
+
+/* 5. OCEANO (Deep Abyssal Navy & Cyan) */
+[data-theme="ocean"] {
+  --color-slate-950: #040d17;
+  --color-slate-900: #071626;
+  --color-slate-800: #0e243b;
+  --color-slate-700: #1c4268;
+  --color-slate-600: #2b5c8f;
+  --color-slate-500: #4d82b8;
+  --color-slate-400: #7fb0de;
+  --color-slate-300: #b2d4f5;
+  --color-slate-200: #daedfc;
+  --color-slate-100: #f0f9ff;
+  --color-white: #ffffff;
+}
+
+/* 6. AMETISTA (Royal Plum & Lavender Night) */
+[data-theme="amethyst"] {
+  --color-slate-950: #0b0614;
+  --color-slate-900: #140c24;
+  --color-slate-800: #211538;
+  --color-slate-700: #3b2760;
+  --color-slate-600: #563b8a;
+  --color-slate-500: #7b61b0;
+  --color-slate-400: #a894d4;
+  --color-slate-300: #cbbce8;
+  --color-slate-200: #e7dff7;
+  --color-slate-100: #f5f3ff;
+  --color-white: #ffffff;
+}
+
+/* Keep solid primary CTA buttons with crisp white text in light & sepia modes */
+[data-theme="light"] #btnToggleLoop,
+[data-theme="light"] #btnAllowMicBanner,
+[data-theme="light"] .bg-brand-600,
+[data-theme="light"] .bg-indigo-600,
+[data-theme="light"] .bg-emerald-600,
+[data-theme="sepia"] #btnToggleLoop,
+[data-theme="sepia"] #btnAllowMicBanner,
+[data-theme="sepia"] .bg-brand-600,
+[data-theme="sepia"] .bg-indigo-600,
+[data-theme="sepia"] .bg-emerald-600 {
+  color: #ffffff !important;
+}
+
+/* Custom scrollbar for modals only; study cards never show scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Pulsing animations */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+}
+
+.mic-pulse {
+  animation: pulse-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+

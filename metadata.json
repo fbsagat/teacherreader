@@ -1,0 +1,6 @@
+{
+  "name": "ShadowReader - Aprenda Inglês com Seus Livros",
+  "description": "Plataforma interativa de leitura bilíngue e treino de pronúncia (Shadowing) em inglês com seus próprios livros em PDF, tradução interlinear palavra por palavra e dicionário integrado.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
