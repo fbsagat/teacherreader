@@ -36,8 +36,10 @@ import {
   deleteAppDataBackup,
   downloadAppDataBackup,
   DriveRemoteFileMeta,
+  DriveRedirectStartedError,
   DriveSyncUserInfo,
   DriveUnauthorizedError,
+  FIREBASE_AUTH_SETTINGS_URL,
   findAppDataBackupFile,
   getInMemoryDriveAccessToken,
   initDriveAuth,
@@ -46,6 +48,7 @@ import {
   upsertAppDataBackup
 } from './services/googleDriveSyncService';
 import { ShadowRepository } from './services/storageService';
+import { describeDriveAuthError } from './utils/driveApiErrors';
 import {
   classifySyncDecision,
   computeSnapshotFingerprint,
@@ -260,6 +263,7 @@ export default function App() {
   const [hasDriveToken, setHasDriveToken] = useState<boolean>(false);
   const [driveSyncStatus, setDriveSyncStatus] = useState<DriveSyncUiStatus>('disconnected');
   const [driveSyncError, setDriveSyncError] = useState<string | null>(null);
+  const [driveAuthHelpUrl, setDriveAuthHelpUrl] = useState<string | null>(null);
   const [driveLastSyncedAt, setDriveLastSyncedAt] = useState<string | null>(null);
   const [driveRemoteFileMeta, setDriveRemoteFileMeta] = useState<DriveRemoteFileMeta | null>(null);
   const [drivePendingConfirmation, setDrivePendingConfirmation] =
@@ -680,16 +684,32 @@ export default function App() {
   );
 
   const handleDriveSignIn = useCallback(async () => {
+    setDriveSyncError(null);
+    setDriveAuthHelpUrl(null);
+    setDriveSyncStatus('checking');
     try {
-      setDriveSyncError(null);
       const { user, accessToken } = await signInWithGoogleForDrive();
       setDriveUser(user);
       setHasDriveToken(true);
       await reconcileWithGoogleDrive(accessToken, true);
     } catch (err) {
-      handleDriveApiError(err);
+      if (err instanceof DriveRedirectStartedError) {
+        setDriveSyncStatus('checking');
+        showToast('Popup bloqueado pelo navegador. Abrindo o login do Google...');
+        return;
+      }
+      if (err instanceof DriveUnauthorizedError) {
+        handleDriveApiError(err);
+        return;
+      }
+      const guidance = describeDriveAuthError(err, window.location.origin);
+      setDriveSyncStatus(previous => (previous === 'needs_reauth' ? 'needs_reauth' : 'disconnected'));
+      setDriveAuthHelpUrl(guidance.code ? FIREBASE_AUTH_SETTINGS_URL : null);
+      setDriveSyncError(
+        guidance.action ? `${guidance.message} ${guidance.action}` : guidance.message
+      );
     }
-  }, [handleDriveApiError, reconcileWithGoogleDrive]);
+  }, [handleDriveApiError, reconcileWithGoogleDrive, showToast]);
 
   const handleDriveSignOut = useCallback(async () => {
     driveAutoSyncArmedRef.current = false;
@@ -6366,6 +6386,7 @@ export default function App() {
         hasAccessToken={hasDriveToken}
         status={driveSyncStatus}
         statusError={driveSyncError}
+        statusHelpUrl={driveAuthHelpUrl}
         lastSyncedAt={driveLastSyncedAt}
         remoteFileMeta={driveRemoteFileMeta}
         pendingConfirmation={drivePendingConfirmation}

@@ -1,20 +1,40 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Teacher Reader / ShadowReader
 
-# Run and deploy your AI Studio app
+Plataforma de leitura bilíngue EN→PT-BR com treino de pronúncia (shadowing), tradução interlinear, dicionário e desafios por frase.
 
-This contains everything you need to run your app locally.
+## Rodar localmente
 
-View your app in AI Studio: https://ai.studio/apps/b5266438-1121-4ebf-aecb-b0fe3b23f5b2
+```bash
+npm install
+cp .env.example .env   # preencha GEMINI_API_KEY
+npm run dev
+```
 
-## Run Locally
+O app fica em http://localhost:3000 (Express + Vite no mesmo processo). Sem `GEMINI_API_KEY`, o app funciona com as vozes/fallbacks alternativos.
 
-**Prerequisites:**  Node.js
+## Verificar
 
+```bash
+npm run lint
+npx tsx --test "src/utils/*.test.ts"
+npm run build
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Produção
+
+| Parte | Onde | URL |
+|---|---|---|
+| Frontend | Vercel | https://teacherreader.vercel.app |
+| API | VPS + Docker + Tailscale Funnel | https://instance-20260808-1016.tail4096b.ts.net |
+
+O frontend usa `VITE_API_BASE_URL` em tempo de build. O backend é `API_ONLY=true`, com CORS restrito e rate limit por IP.
+
+Runbook completo: [DEPLOY.md](DEPLOY.md).
+
+## Estrutura
+
+- `server.ts` — API Express (`/api/voice-hub/*`), TTS/STT e fallbacks.
+- `src/App.tsx` — motor de shadowing e estado da UI.
+- `src/utils/` — regras puras e testes (`node:test`).
+- `src/services/storageService.ts` — IndexedDB/localStorage.
+- `src/services/googleDriveSyncService.ts` — backup opcional no Google Drive.

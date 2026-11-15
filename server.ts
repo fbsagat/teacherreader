@@ -15,6 +15,44 @@ const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT) || 3000;
 
+const MAX_TTS_TEXT_CHARS = 1500;
+// ~6 MB de áudio; acima disso é abuso ou gravação quebrada.
+const MAX_STT_BASE64_CHARS = 8 * 1024 * 1024;
+const ALLOWED_AUDIO_MIME = new Set([
+  'audio/webm',
+  'audio/wav',
+  'audio/x-wav',
+  'audio/mp4',
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/ogg'
+]);
+
+/**
+ * Limita chamadas simultâneas ao Gemini. A cota é por projeto, então um pico
+ * de usuários não deve disparar 429 em cascata para todo mundo.
+ */
+function createSemaphore(limit: number) {
+  let active = 0;
+  const queue: Array<() => void> = [];
+
+  return async function run<T>(task: () => Promise<T>): Promise<T> {
+    if (active >= limit) {
+      await new Promise<void>(resolve => queue.push(resolve));
+    }
+    active += 1;
+    try {
+      return await task();
+    } finally {
+      active -= 1;
+      const next = queue.shift();
+      if (next) next();
+    }
+  };
+}
+
+const geminiGate = createSemaphore(4);
+
 let genAiModulePromise: Promise<typeof import('@google/genai')> | null = null;
 function loadGenAiModule() {
   if (!genAiModulePromise) {
@@ -75,7 +113,29 @@ interface ServerTtsResult {
   providerUsed: string;
 }
 
+// Modelo principal primeiro; o "lite" serve de reserva quando o principal
+// esgota a cota (o limite é por modelo, não por chave).
+const GEMINI_TTS_MODELS = ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts'];
+
 let geminiTtsCooldownUntil = 0;
+
+/** Cota esgotada é por modelo: bloqueia só o modelo que respondeu 429. */
+const geminiTtsModelCooldownUntil = new Map<string, number>();
+
+/**
+ * A cota diária do free tier volta a valer em até 24h. O 429 do Gemini traz
+ * "Please retry in 54m54s"; usar esse valor evita bater na API à toa.
+ */
+function parseRetryDelayMs(message: string): number {
+  const match = message.match(/retry in\s+(?:(\d+)h)?(?:(\d+)m)?([\d.]+)s/i);
+  if (!match) return 90_000;
+  const hours = Number(match[1] || 0);
+  const minutes = Number(match[2] || 0);
+  const seconds = Number(match[3] || 0);
+  const ms = ((hours * 60 + minutes) * 60 + seconds) * 1000;
+  if (!Number.isFinite(ms) || ms <= 0) return 90_000;
+  return Math.min(ms + 5_000, 24 * 60 * 60 * 1000);
+}
 
 function extractAllGeminiAudioParts(response: any): string[] {
   const parts = response?.candidates?.[0]?.content?.parts;
@@ -94,7 +154,8 @@ async function synthesizeGeminiSingleChunk(
   ai: GoogleGenAI,
   chunkText: string,
   selectedVoice: string,
-  styleInstruction: string
+  styleInstruction: string,
+  model: string
 ): Promise<string | null> {
   const buildConfig = () => ({
     responseModalities: ['AUDIO'] as string[],
@@ -106,53 +167,72 @@ async function synthesizeGeminiSingleChunk(
   });
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash-lite-tts',
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: chunkText,
-              speechMetadata: {
-                style: styleInstruction
-              }
-            } as any
-          ]
-        }
-      ],
-      config: buildConfig()
-    });
+    const response = await geminiGate(() =>
+      ai.models.generateContent({
+        model,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                text: chunkText,
+                speechMetadata: {
+                  style: styleInstruction
+                }
+              } as any
+            ]
+          }
+        ],
+        config: buildConfig()
+      })
+    );
     const audioParts = extractAllGeminiAudioParts(response);
     if (audioParts.length > 0) {
       return concatenateWavBase64(audioParts);
     }
+    console.warn(`[tts] ${model} respondeu sem áudio (nenhuma parte inlineData).`);
   } catch (err: any) {
     const msg = String(err?.message || '');
     if (err?.status === 429 || msg.includes('429') || msg.includes('Quota exceeded')) {
-      geminiTtsCooldownUntil = Date.now() + 90_000;
+      const cooldownMs = parseRetryDelayMs(msg);
+      geminiTtsModelCooldownUntil.set(model, Date.now() + cooldownMs);
+      console.warn(
+        `[tts] ${model} sem cota; pausando por ${Math.round(cooldownMs / 60_000)} min.`
+      );
       return null;
     }
+    console.warn(
+      `[tts] ${model} falhou (status=${err?.status ?? 'n/d'}): ${msg.slice(0, 300)}`
+    );
     if (err?.status === 400 || msg.includes('INVALID_ARGUMENT') || msg.includes('speechMetadata')) {
       try {
-        const plainResponse = await ai.models.generateContent({
-          model: 'gemini-3.8-flash-lite-tts',
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: chunkText }]
-            }
-          ],
-          config: buildConfig()
-        });
+        const plainResponse = await geminiGate(() =>
+          ai.models.generateContent({
+            model,
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: chunkText }]
+              }
+            ],
+            config: buildConfig()
+          })
+        );
         const audioParts = extractAllGeminiAudioParts(plainResponse);
         if (audioParts.length > 0) {
           return concatenateWavBase64(audioParts);
         }
       } catch (retryErr: any) {
         const retryMsg = String(retryErr?.message || '');
-        if (retryErr?.status === 429 || retryMsg.includes('429') || retryMsg.includes('Quota exceeded')) {
-          geminiTtsCooldownUntil = Date.now() + 90_000;
+        console.warn(
+          `[tts] ${model} retry sem speechMetadata falhou (status=${retryErr?.status ?? 'n/d'}): ${retryMsg.slice(0, 300)}`
+        );
+        if (
+          retryErr?.status === 429 ||
+          retryMsg.includes('429') ||
+          retryMsg.includes('Quota exceeded')
+        ) {
+          geminiTtsModelCooldownUntil.set(model, Date.now() + parseRetryDelayMs(retryMsg));
         }
       }
     }
@@ -181,24 +261,42 @@ async function synthesizeWithGeminiTts(
   const chunks = splitTextIntoTtsChunks(text, 240);
   if (chunks.length === 0) return null;
 
-  const wavBase64Parts: string[] = [];
-  for (const chunk of chunks) {
-    const wavPart = await synthesizeGeminiSingleChunk(ai, chunk, selectedVoice, styleInstruction);
-    if (!wavPart) {
-      return null;
+  // Um modelo por requisição inteira: o áudio do texto sai sempre com a mesma voz.
+  for (const model of GEMINI_TTS_MODELS) {
+    const modelCooldown = geminiTtsModelCooldownUntil.get(model) ?? 0;
+    if (Date.now() < modelCooldown) continue;
+
+    const wavBase64Parts: string[] = [];
+    for (const chunk of chunks) {
+      const wavPart = await synthesizeGeminiSingleChunk(
+        ai,
+        chunk,
+        selectedVoice,
+        styleInstruction,
+        model
+      );
+      if (!wavPart) break;
+      wavBase64Parts.push(wavPart);
     }
-    wavBase64Parts.push(wavPart);
+
+    if (wavBase64Parts.length === chunks.length) {
+      return {
+        audioBase64: concatenateWavBase64(wavBase64Parts),
+        audioChunks: wavBase64Parts.map(audioBase64 => ({
+          audioBase64,
+          mimeType: 'audio/wav'
+        })),
+        mimeType: 'audio/wav',
+        providerUsed: 'gemini_tts'
+      };
+    }
   }
 
-  return {
-    audioBase64: concatenateWavBase64(wavBase64Parts),
-    audioChunks: wavBase64Parts.map(audioBase64 => ({
-      audioBase64,
-      mimeType: 'audio/wav'
-    })),
-    mimeType: 'audio/wav',
-    providerUsed: 'gemini_tts'
-  };
+  // Todos os modelos esgotados: evita novas tentativas por 90s.
+  if (GEMINI_TTS_MODELS.every(model => Date.now() < (geminiTtsModelCooldownUntil.get(model) ?? 0))) {
+    geminiTtsCooldownUntil = Date.now() + 90_000;
+  }
+  return null;
 }
 
 async function fetchNeuralCloudSingleChunk(
@@ -391,19 +489,31 @@ function createRateLimiter(maxRequests: number, windowMs: number) {
 
 async function startServer() {
   const app = express();
+  app.disable('x-powered-by');
   const apiOnly = process.env.API_ONLY === 'true';
   const allowedOrigins = (process.env.CORS_ORIGINS || '')
     .split(',')
     .map(origin => origin.trim())
     .filter(Boolean);
+  const isOriginAllowed = (origin: string) =>
+    allowedOrigins.some(allowed => {
+      if (allowed === origin) return true;
+      if (!allowed.includes('*')) return false;
+      const pattern = allowed
+        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '.*');
+      return new RegExp(`^${pattern}$`).test(origin);
+    });
 
-  app.set('trust proxy', true);
+  // Only Tailscale Funnel proxies this app; trust exactly one hop so clients
+  // cannot spoof X-Forwarded-For to bypass the per-IP rate limit.
+  app.set('trust proxy', 1);
   app.use(express.json({ limit: '15mb' }));
 
   // The frontend can live on Vercel while this Express app runs on the VPS.
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin && allowedOrigins.includes(origin)) {
+    if (origin && isOriginAllowed(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
       res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -491,9 +601,8 @@ async function startServer() {
         error: 'Provedor neural indisponível no momento; usando voz local/nativa como fallback.'
       });
     } catch (error: any) {
-      res.status(500).json({
-        error: error?.message || 'Erro ao sintetizar áudio neural.'
-      });
+      console.error('[tts] falha na síntese:', error?.message || error);
+      res.status(500).json({ error: 'Erro ao sintetizar áudio neural.' });
     }
   });
 
@@ -513,6 +622,22 @@ async function startServer() {
         return;
       }
 
+      if (audioBase64.length > MAX_STT_BASE64_CHARS) {
+        res.status(413).json({
+          error: 'Áudio acima do limite (6 MB). Grave uma frase mais curta e tente novamente.'
+        });
+        return;
+      }
+
+      const cleanMime = String(mimeType).split(';')[0].trim().toLowerCase() || 'audio/webm';
+      if (!ALLOWED_AUDIO_MIME.has(cleanMime)) {
+        res.status(400).json({ error: 'Formato de áudio não suportado.' });
+        return;
+      }
+
+      const safeTargetSentence =
+        typeof targetSentence === 'string' ? targetSentence.slice(0, 500) : '';
+
       const ai = await getGeminiClient();
       if (!ai) {
         res.status(503).json({ error: 'GEMINI_API_KEY não configurada no servidor.' });
@@ -520,28 +645,28 @@ async function startServer() {
       }
       const { ThinkingLevel, Type } = await loadGenAiModule();
 
-      const cleanMime = mimeType.split(';')[0].trim() || 'audio/webm';
-
       // Fast transcription only via gemini-3.5-transcribe
       if (!evaluatePronunciation) {
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.5-transcribe',
-          contents: {
-            parts: [
-              {
-                inlineData: {
-                  mimeType: cleanMime,
-                  data: audioBase64
+        const response = await geminiGate(() =>
+          ai.models.generateContent({
+            model: 'gemini-3.5-transcribe',
+            contents: {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: cleanMime,
+                    data: audioBase64
+                  }
+                },
+                {
+                  text: safeTargetSentence
+                    ? `Transcribe the English speech in this audio accurately. Expected target phrase context: "${safeTargetSentence}". Always write spoken numbers, times, dates, and ordinals as full English words (e.g., "nine o'clock", "twenty-five", "first"), NEVER as digits or clock notation (never "9:00", "25", "1st"). Output ONLY the exact words spoken by the user.`
+                    : 'Transcribe the English speech in this audio accurately. Always write spoken numbers, times, dates, and ordinals as full English words (e.g., "nine o\'clock", "twenty-five", "first"), NEVER as digits or clock notation (never "9:00", "25", "1st"). Output ONLY the exact words spoken.'
                 }
-              },
-              {
-                text: targetSentence
-                  ? `Transcribe the English speech in this audio accurately. Expected target phrase context: "${targetSentence}". Always write spoken numbers, times, dates, and ordinals as full English words (e.g., "nine o'clock", "twenty-five", "first"), NEVER as digits or clock notation (never "9:00", "25", "1st"). Output ONLY the exact words spoken by the user.`
-                  : 'Transcribe the English speech in this audio accurately. Always write spoken numbers, times, dates, and ordinals as full English words (e.g., "nine o\'clock", "twenty-five", "first"), NEVER as digits or clock notation (never "9:00", "25", "1st"). Output ONLY the exact words spoken.'
-              }
-            ]
-          }
-        });
+              ]
+            }
+          })
+        );
 
         res.json({
           transcript: (response.text ?? '').trim(),
@@ -551,7 +676,8 @@ async function startServer() {
       }
 
       // Multimodal Pronunciation Coach + Transcription via gemini-4-hydrogen
-      const coachResponse = await ai.models.generateContent({
+      const coachResponse = await geminiGate(() =>
+        ai.models.generateContent({
         model: 'gemini-4-hydrogen',
         contents: {
           parts: [
@@ -563,7 +689,7 @@ async function startServer() {
             },
             {
               text: `You are an American English pronunciation coach for a Brazilian Portuguese speaker.
-Listen carefully to the user's audio recording attempting to say the target sentence: "${targetSentence}".
+Listen carefully to the user's audio recording attempting to say the target sentence: "${safeTargetSentence}".
 1. Transcribe what the user actually said in English ("transcript"). IMPORTANT: Always write all spoken numbers, times, dates, and ordinals as full English words (e.g., "nine o'clock", "twenty-five", "first"), NEVER as digits or clock notation (never "9:00", "25", "1st").
 2. Evaluate overall pronunciation accuracy (0-100), fluency/rhythm (0-100), and connected speech prosody (0-100).
 3. Write a concise, encouraging 1-sentence phonetic tip in Brazilian Portuguese ("coachTipPt") focusing on the most important American English sound in this sentence (e.g., TH sound, silent letters, -ED ending, vowel reduction, or consonant-vowel linking).
@@ -614,7 +740,8 @@ Listen carefully to the user's audio recording attempting to say the target sent
             ]
           }
         }
-      });
+      })
+      );
 
       const parsed = JSON.parse((coachResponse.text ?? '{}').trim());
       res.json({
@@ -627,15 +754,49 @@ Listen carefully to the user's audio recording attempting to say the target sent
         providerUsed: 'gemini_coach'
       });
     } catch (error: any) {
-      res.status(500).json({
-        error: error?.message || 'Erro ao avaliar pronúncia por áudio.'
-      });
+      console.error('[stt] falha na avaliação:', error?.message || error);
+      res.status(500).json({ error: 'Erro ao avaliar pronúncia por áudio.' });
     }
   });
+
+  // 4. Erros de API sempre em JSON (o cliente espera JSON, não HTML do Express)
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'Rota de API não encontrada.' });
+  });
+
+  app.use(
+    (
+      err: any,
+      _req: express.Request,
+      res: express.Response,
+      _next: express.NextFunction
+    ) => {
+      const type = String(err?.type || '');
+      if (type === 'entity.too.large') {
+        res.status(413).json({ error: 'Requisição muito grande (limite de 15 MB).' });
+        return;
+      }
+      if (type === 'entity.parse.failed' || err instanceof SyntaxError) {
+        res.status(400).json({ error: 'JSON inválido no corpo da requisição.' });
+        return;
+      }
+      console.error('[api] erro não tratado:', err);
+      res.status(500).json({ error: 'Erro interno ao processar a solicitação.' });
+    }
+  );
 
   const httpServer = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
   });
+
+  // Encerramento limpo: o Docker manda SIGTERM no restart/deploy.
+  const shutdown = (signal: string) => {
+    console.log(`Recebido ${signal}. Encerrando conexões...`);
+    httpServer.close(() => process.exit(0));
+    setTimeout(() => process.exit(1), 10_000).unref();
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 
   // API-only mode: the Vite/static frontend is hosted by Vercel instead.
   if (apiOnly) {

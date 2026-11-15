@@ -4,6 +4,14 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/__/auth/:path*",
+      "destination": "https://gen-lang-client-0186216759.firebaseapp.com/__/auth/:path*"
+    },
+    {
+      "source": "/__/firebase/:path*",
+      "destination": "https://gen-lang-client-0186216759.firebaseapp.com/__/firebase/:path*"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
@@ -13,8 +21,13 @@
       "source": "/(.*)",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Permissions-Policy", "value": "microphone=(self)" }
+        { "key": "Permissions-Policy", "value": "microphone=(self)" },
+        {
+          "key": "Content-Security-Policy-Report-Only",
+          "value": "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; worker-src 'self' blob: https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: data:; connect-src 'self' https://instance-20260808-1016.tail4096b.ts.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com https://translate.googleapis.com https://api.mymemory.translated.net https://api.dictionaryapi.dev; frame-src 'self' https://gen-lang-client-0186216759.firebaseapp.com https://accounts.google.com; base-uri 'self'; form-action 'self'; object-src 'none'"
+        }
       ]
     }
   ]

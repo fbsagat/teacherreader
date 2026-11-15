@@ -1,12 +1,15 @@
 import { getApps, initializeApp } from 'firebase/app';
 import {
   getAuth,
+  getRedirectResult,
   GoogleAuthProvider,
   onAuthStateChanged,
   signInWithPopup,
+  signInWithRedirect,
   User
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
+import { describeDriveApiError, shouldFallbackToRedirect } from '../utils/driveApiErrors';
 import {
   DRIVE_SYNC_FILENAME,
   DRIVE_SYNC_MIME_TYPE,
@@ -16,8 +19,29 @@ import {
 
 export const SCOPES = ['https://www.googleapis.com/auth/drive.appdata'] as const;
 
-const app = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
+const isLocalDevHost =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname.endsWith('.local'));
+
+// Em produção o authDomain é servido pelo próprio domínio (rewrite em
+// vercel.json). Assim o login vira contexto de primeira parte e sobrevive a
+// navegadores que bloqueiam cookies de terceiros — antes disso o retorno do
+// redirecionamento chegava vazio e o app caía em "Desconectado".
+const runtimeConfig = {
+  ...firebaseConfig,
+  authDomain:
+    isLocalDevHost || typeof window === 'undefined'
+      ? firebaseConfig.authDomain
+      : window.location.hostname
+};
+
+const app = getApps().length > 0 ? getApps()[0] : initializeApp(runtimeConfig);
 const auth = getAuth(app);
+
+/** Atalho usado quando o Firebase recusa o domínio atual. */
+export const FIREBASE_AUTH_SETTINGS_URL = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`;
 
 const provider = new GoogleAuthProvider();
 for (const scope of SCOPES) {
@@ -35,6 +59,17 @@ export class DriveUnauthorizedError extends Error {
   constructor(message = 'A autorização do Google Drive expirou.') {
     super(message);
     this.name = 'DriveUnauthorizedError';
+  }
+}
+
+/**
+ * O pop-up foi bloqueado e o app já iniciou o fluxo por redirecionamento.
+ * Não é uma falha: a página será recarregada pelo Google.
+ */
+export class DriveRedirectStartedError extends Error {
+  constructor() {
+    super('Redirecionando para a tela de login do Google...');
+    this.name = 'DriveRedirectStartedError';
   }
 }
 
@@ -65,9 +100,15 @@ export function initDriveAuth(
   onAuthReady: (user: DriveSyncUserInfo, accessToken: string) => void,
   onNeedsAuth: (signedInUserWithoutToken: DriveSyncUserInfo | null) => void
 ): () => void {
-  return onAuthStateChanged(auth, (user: User | null) => {
-    if (user) {
-      const mapped = mapFirebaseUser(user);
+  let signedInUser: User | null = null;
+  // Espera o getRedirectResult antes de anunciar "precisa reconectar", para o
+  // retorno do fluxo por redirecionamento não piscar como sessão expirada.
+  let redirectSettled = false;
+
+  const flush = () => {
+    if (!redirectSettled) return;
+    if (signedInUser) {
+      const mapped = mapFirebaseUser(signedInUser);
       if (cachedAccessToken) {
         onAuthReady(mapped, cachedAccessToken);
       } else if (!isSigningIn) {
@@ -75,9 +116,32 @@ export function initDriveAuth(
         onNeedsAuth(mapped);
       }
     } else {
+      // Não derruba uma conexão recém-estabelecida por um evento nulo atrasado.
+      if (cachedAccessToken) return;
       cachedAccessToken = null;
       onNeedsAuth(null);
     }
+  };
+
+  getRedirectResult(auth)
+    .then(result => {
+      if (!result?.user) return;
+      signedInUser = result.user;
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) cachedAccessToken = credential.accessToken;
+    })
+    .catch(() => {
+      // Sem resultado pendente ou falha no retorno: segue o fluxo normal.
+    })
+    .finally(() => {
+      redirectSettled = true;
+      flush();
+    });
+
+  return onAuthStateChanged(auth, (user: User | null) => {
+    signedInUser = user;
+    if (!user) cachedAccessToken = null;
+    flush();
   });
 }
 
@@ -97,6 +161,14 @@ export async function signInWithGoogleForDrive(): Promise<{
       user: mapFirebaseUser(result.user),
       accessToken: cachedAccessToken
     };
+  } catch (err) {
+    // Navegador bloqueou o pop-up (ou WebView sem suporte): cai para redirect.
+    // A página é recarregada pelo Google e o retorno é tratado em initDriveAuth.
+    if (shouldFallbackToRedirect(err)) {
+      await signInWithRedirect(auth, provider);
+      throw new DriveRedirectStartedError();
+    }
+    throw err;
   } finally {
     isSigningIn = false;
   }
@@ -130,6 +202,19 @@ async function driveFetch(
   return res;
 }
 
+/** Lê o corpo do erro do Google para transformar em orientação acionável em pt-BR. */
+async function throwDriveApiError(res: Response, action: string): Promise<never> {
+  let bodyText = '';
+  try {
+    bodyText = await res.text();
+  } catch {
+    bodyText = '';
+  }
+  throw new Error(
+    describeDriveApiError(res.status, bodyText, action, firebaseConfig.projectId)
+  );
+}
+
 export async function findAppDataBackupFile(
   accessToken: string
 ): Promise<DriveRemoteFileMeta | null> {
@@ -138,7 +223,7 @@ export async function findAppDataBackupFile(
 
   const res = await driveFetch(accessToken, url);
   if (!res.ok) {
-    throw new Error(`Falha ao consultar backups no Google Drive (${res.status}).`);
+    await throwDriveApiError(res, 'consultar backups no Google Drive');
   }
   const json = await res.json();
   const files = Array.isArray(json?.files) ? json.files : [];
@@ -161,7 +246,7 @@ export async function downloadAppDataBackup(
   const res = await driveFetch(accessToken, url);
   if (res.status === 404) return null;
   if (!res.ok) {
-    throw new Error(`Falha ao baixar backup do Google Drive (${res.status}).`);
+    await throwDriveApiError(res, 'baixar o backup do Google Drive');
   }
   const raw = await res.json();
   return parseDriveBackupSnapshot(raw);
@@ -187,7 +272,7 @@ export async function upsertAppDataBackup(
       return upsertAppDataBackup(accessToken, snapshot, null);
     }
     if (!res.ok) {
-      throw new Error(`Falha ao atualizar backup no Google Drive (${res.status}).`);
+      await throwDriveApiError(res, 'atualizar o backup no Google Drive');
     }
     const updated = await res.json();
     return {
@@ -225,7 +310,7 @@ export async function upsertAppDataBackup(
   });
 
   if (!res.ok) {
-    throw new Error(`Falha ao criar backup oculto no Google Drive (${res.status}).`);
+    await throwDriveApiError(res, 'criar o backup no Google Drive');
   }
   const created = await res.json();
   return {
@@ -244,7 +329,7 @@ export async function deleteAppDataBackup(
   const res = await driveFetch(accessToken, url, { method: 'DELETE' });
   if (res.status === 404) return true;
   if (!res.ok) {
-    throw new Error(`Falha ao remover backup no Google Drive (${res.status}).`);
+    await throwDriveApiError(res, 'remover o backup do Google Drive');
   }
   return true;
 }

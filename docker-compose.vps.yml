@@ -14,6 +14,19 @@ services:
     ports:
       # Loopback only: Tailscale Funnel proxies to this port.
       - "127.0.0.1:3110:3000"
+    # VPS compartilhada com o MemeTrigger: limita o impacto de um pico de TTS/STT.
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    # A API não precisa de nenhuma capability: só abre a porta 3000 (>1024).
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     healthcheck:
       test:
         [

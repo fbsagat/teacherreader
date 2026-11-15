@@ -31,6 +31,8 @@ interface GoogleDriveSyncModalProps {
   hasAccessToken: boolean;
   status: DriveSyncUiStatus;
   statusError: string | null;
+  /** Link de ajuda exibido sob o erro (ex.: configurações de login do Firebase). */
+  statusHelpUrl?: string | null;
   lastSyncedAt: string | null;
   remoteFileMeta: DriveRemoteFileMeta | null;
   pendingConfirmation: DrivePendingConfirmation | null;
@@ -65,12 +67,33 @@ function formatBytesKb(bytes?: number): string {
   return `${(bytes / 1024).toFixed(1)} KB`;
 }
 
+/** Mantém as mensagens em pt-BR com URLs clicáveis (ex.: ativar a Drive API). */
+function renderTextWithLinks(text: string): React.ReactNode {
+  const parts = text.split(/(https?:\/\/[^\s]+)/g);
+  return parts.map((part, index) =>
+    /^https?:\/\//.test(part) ? (
+      <a
+        key={`link-${index}`}
+        href={part}
+        target="_blank"
+        rel="noreferrer"
+        className="underline text-sky-300 break-all hover:text-sky-200"
+      >
+        {part}
+      </a>
+    ) : (
+      <React.Fragment key={`text-${index}`}>{part}</React.Fragment>
+    )
+  );
+}
+
 export const GoogleDriveSyncModal: React.FC<GoogleDriveSyncModalProps> = ({
   isOpen,
   user,
   hasAccessToken,
   status,
   statusError,
+  statusHelpUrl,
   lastSyncedAt,
   remoteFileMeta,
   pendingConfirmation,
@@ -89,6 +112,45 @@ export const GoogleDriveSyncModal: React.FC<GoogleDriveSyncModalProps> = ({
   const [isBusy, setIsBusy] = useState(false);
   const [confirmOverwriteWarning, setConfirmOverwriteWarning] = useState(false);
   const [confirmDeleteBackup, setConfirmDeleteBackup] = useState(false);
+  const [copiedOrigin, setCopiedOrigin] = useState(false);
+  const [copiedDiagnostics, setCopiedDiagnostics] = useState(false);
+
+  const currentHost = typeof window !== 'undefined' ? window.location.host : '';
+
+  const handleCopyOrigin = async () => {
+    if (!currentHost || typeof navigator === 'undefined' || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(currentHost);
+      setCopiedOrigin(true);
+      window.setTimeout(() => setCopiedOrigin(false), 2000);
+    } catch {
+      setCopiedOrigin(false);
+    }
+  };
+
+  const buildDiagnostics = () =>
+    [
+      'Teacher Reader — diagnóstico do Google Drive',
+      `origem: ${typeof window !== 'undefined' ? window.location.origin : '?'}`,
+      `conta: ${user?.email || (user ? user.displayName : 'nenhuma')}`,
+      `uid: ${user?.uid || '-'}`,
+      `tokenDrive: ${hasAccessToken ? 'presente' : 'ausente'}`,
+      `status: ${status}`,
+      `erro: ${statusError || '-'}`,
+      `arquivoRemoto: ${remoteFileMeta?.id || '-'}`,
+      `userAgent: ${typeof navigator !== 'undefined' ? navigator.userAgent : '?'}`
+    ].join('\n');
+
+  const handleCopyDiagnostics = async () => {
+    if (typeof navigator === 'undefined' || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(buildDiagnostics());
+      setCopiedDiagnostics(true);
+      window.setTimeout(() => setCopiedDiagnostics(false), 2000);
+    } catch {
+      setCopiedDiagnostics(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -225,9 +287,35 @@ export const GoogleDriveSyncModal: React.FC<GoogleDriveSyncModalProps> = ({
             )}
 
             {statusError && (
-              <p className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-lg px-2.5 py-2">
-                {statusError}
-              </p>
+              <div className="space-y-1.5">
+                <p className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-lg px-2.5 py-2">
+                  {renderTextWithLinks(statusError)}
+                </p>
+                {!hasAccessToken && currentHost && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] text-slate-400">
+                      Domínio deste site: <strong className="text-slate-300">{currentHost}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyOrigin()}
+                      className="text-[10px] font-semibold px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition cursor-pointer"
+                    >
+                      {copiedOrigin ? 'Copiado!' : 'Copiar domínio'}
+                    </button>
+                    {statusHelpUrl && (
+                      <a
+                        href={statusHelpUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[10px] font-semibold px-2 py-1 rounded-md bg-sky-600/20 hover:bg-sky-600/30 border border-sky-500/40 text-sky-200 transition"
+                      >
+                        Abrir Firebase ↗
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -553,6 +641,28 @@ export const GoogleDriveSyncModal: React.FC<GoogleDriveSyncModalProps> = ({
               </div>
             </div>
           )}
+
+          {/* Diagnóstico do login (útil quando o Google devolve o usuário sem token) */}
+          <details className="bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2 text-[11px] text-slate-400">
+            <summary className="cursor-pointer select-none font-semibold text-slate-300">
+              Diagnóstico da conexão
+            </summary>
+            <div className="mt-2 space-y-1 font-mono text-[10px] leading-relaxed break-all">
+              <p>conta: {user ? `${user.email || user.displayName} (${user.uid})` : 'nenhuma'}</p>
+              <p>token do Drive: {hasAccessToken ? 'presente' : 'ausente'}</p>
+              <p>status: {status}</p>
+              <p>erro: {statusError || '—'}</p>
+              <p>arquivo remoto: {remoteFileMeta?.id || '—'}</p>
+              <p>origem: {currentHost || '—'}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleCopyDiagnostics()}
+              className="mt-2 text-[10px] font-semibold px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition cursor-pointer"
+            >
+              {copiedDiagnostics ? 'Diagnóstico copiado!' : 'Copiar diagnóstico'}
+            </button>
+          </details>
         </div>
       </div>
     </div>
