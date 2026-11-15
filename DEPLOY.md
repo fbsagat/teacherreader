@@ -65,7 +65,7 @@ teacherreader-deploy.timer (60 s)
 - Pausar o deploy automático: `sudo systemctl disable --now teacherreader-deploy.timer`.
 - Rollback manual: `sudo systemctl stop teacherreader-deploy.timer`, `git -C /opt/teacherreader reset --hard <sha>`, `bash /opt/teacherreader/scripts/vps-deploy.sh`, e reative o timer.
 
-Primeira instalação (uma vez, na VPS):
+Primeira instalação (uma vez, na VPS, **sem** `sudo` — o script usa `sudo` internamente):
 
 ```bash
 bash /opt/teacherreader/scripts/install-vps-auto-deploy.sh
@@ -92,7 +92,13 @@ A Vercel já está conectada ao repositório: push na `main` gera deploy de prod
 
 ## Atualizar o backend manualmente (contingência)
 
-Se o timer estiver parado ou o GitHub fora do ar:
+Se o timer estiver parado ou o GitHub fora do ar. Antes de copiar arquivos à mão, pare o timer — senão o próximo ciclo faz `checkout -f` e desfaz sua cópia:
+
+```bash
+sudo systemctl stop teacherreader-deploy.timer
+# ... fluxo manual abaixo ...
+sudo systemctl start teacherreader-deploy.timer
+```
 
 Da raiz do projeto, no Windows:
 
