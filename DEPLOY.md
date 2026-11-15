@@ -75,6 +75,17 @@ O script gera a chave `~/.ssh/teacherreader_deploy` e, se o `fetch` falhar, impr
 
 O CI (`.github/workflows/ci.yml`) roda lint, testes e build em todo push/PR. Ele **não** bloqueia o deploy: a VPS publica o que está na `main`. Se o CI ficar vermelho, corrija ou reverta — o rollback automático só cobre falha de build/healthcheck.
 
+### Problemas comuns no deploy automático
+
+| Sintoma no `journalctl -u teacherreader-deploy` | Causa / correção |
+|---|---|
+| `git fetch falhou` repetido | deploy key removida do GitHub ou rede fora; recadastre com `bash scripts/install-vps-auto-deploy.sh` |
+| `Permission denied (publickey)` | idem: a chave `~/.ssh/teacherreader_deploy` do usuário `ubuntu` não está nas Deploy keys |
+| `did not complete successfully: exit code: 1` no `npx tsc --noEmit` | o commit tem erro de tipo; corrija e faça push. A API segue no commit anterior |
+| `healthcheck falhou após 60s` | container subiu mas não responde; veja `docker logs teacherreader-api` (o rollback já tentou reverter) |
+| `sem mudança de backend` | esperado: só docs/frontend mudaram, a API não é reconstruída |
+| nada aparece | timer parado: `systemctl status teacherreader-deploy.timer` |
+
 ### Frontend na Vercel
 
 A Vercel já está conectada ao repositório: push na `main` gera deploy de produção; outras branches geram preview. `VITE_API_BASE_URL` é build-time e já está configurada em Production e Preview.
