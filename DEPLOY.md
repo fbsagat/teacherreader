@@ -33,7 +33,55 @@ VITE_API_BASE_URL=https://instance-20260808-1016.tail4096b.ts.net
 
 É uma variável de **build**: depois de alterá-la, é preciso fazer um novo deploy.
 
-## Atualizar o backend
+## Deploy automático
+
+Depois do que está abaixo configurado, **um `git push` na `main` publica as duas pontas**:
+
+| O que muda | Quem publica | Tempo típico |
+|---|---|---|
+| Frontend (Vercel) | Integração Git da Vercel (`vercel git connect`) | 1–2 min |
+| Backend (VPS) | Timer do systemd puxa `origin/main` a cada 60 s | 1–3 min |
+
+### Backend na VPS
+
+```text
+teacherreader-deploy.timer (60 s)
+  └─ teacherreader-deploy.service (User=ubuntu)
+       └─ /usr/local/bin/teacherreader-deploy
+            ├─ git fetch origin main  (deploy key read-only)
+            ├─ sem commit novo? sai em silêncio
+            ├─ git checkout -f -B main origin/main
+            ├─ bash scripts/vps-deploy.sh
+            │    ├─ docker compose up -d --build
+            │    │    └─ Dockerfile roda tsc --noEmit + testes (porteiro)
+            │    └─ healthcheck em /api/voice-hub/status (60 s)
+            └─ falhou? volta para o commit anterior e reconstrói
+```
+
+- O `.env` é ignorado pelo git, então `checkout -f` preserva as credenciais.
+- Código que não passa no typecheck ou nos testes **não gera imagem**: o deploy falha e o rollback devolve o commit anterior ao ar.
+- Logs: `journalctl -u teacherreader-deploy -f`.
+- Rodar agora, sem esperar o timer: `sudo systemctl start teacherreader-deploy`.
+- Pausar o deploy automático: `sudo systemctl disable --now teacherreader-deploy.timer`.
+- Rollback manual: `sudo systemctl stop teacherreader-deploy.timer`, `git -C /opt/teacherreader reset --hard <sha>`, `bash /opt/teacherreader/scripts/vps-deploy.sh`, e reative o timer.
+
+Primeira instalação (uma vez, na VPS):
+
+```bash
+bash /opt/teacherreader/scripts/install-vps-auto-deploy.sh
+```
+
+O script gera a chave `~/.ssh/teacherreader_deploy` e, se o `fetch` falhar, imprime a chave pública para cadastrar em **GitHub → repo → Settings → Deploy keys** (sem write access). Rodar de novo depois disso conclui a instalação.
+
+O CI (`.github/workflows/ci.yml`) roda lint, testes e build em todo push/PR. Ele **não** bloqueia o deploy: a VPS publica o que está na `main`. Se o CI ficar vermelho, corrija ou reverta — o rollback automático só cobre falha de build/healthcheck.
+
+### Frontend na Vercel
+
+A Vercel já está conectada ao repositório: push na `main` gera deploy de produção; outras branches geram preview. `VITE_API_BASE_URL` é build-time e já está configurada em Production e Preview.
+
+## Atualizar o backend manualmente (contingência)
+
+Se o timer estiver parado ou o GitHub fora do ar:
 
 Da raiz do projeto, no Windows:
 

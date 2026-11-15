@@ -7,6 +7,10 @@ COPY package.json package-lock.json ./
 RUN npm ci --legacy-peer-deps
 COPY tsconfig.json server.ts ./
 COPY src ./src
+# Typecheck e testes rodam no build: uma imagem só existe se o código passa.
+# O deploy automático da VPS usa isso como porteiro (falhou → rollback).
+RUN npx tsc --noEmit
+RUN npx tsx --test "src/utils/*.test.ts"
 RUN npx esbuild server.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=server.js
 
 FROM node:22-alpine

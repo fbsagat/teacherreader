@@ -40,8 +40,9 @@ ShadowReader / Teacher Reader: bilingual EN→PT-BR reading + shadowing app. Rea
 - Backend: VPS `memetrigger-vps` (Tailscale), `/opt/teacherreader`, container `teacherreader-api`, loopback `127.0.0.1:3110`, public via Tailscale Funnel `https://instance-20260808-1016.tail4096b.ts.net`.
 - The VPS is shared with MemeTrigger. Never touch `/opt/MemeTrigger`, its nginx, ports 80/443, or its containers. This deployment must stay isolated in `/opt/teacherreader` using Funnel.
 - Backend secrets live in `/opt/teacherreader/.env` (mode `600`): `GEMINI_API_KEY`, `CORS_ORIGINS`, `API_ONLY=true`.
-- Update backend: tar the source (exclude `node_modules`, `dist`, `.env`, `.aistudio`), scp to the VPS, extract into `/opt/teacherreader`, then `sudo docker compose -f docker-compose.vps.yml up -d --build`.
-- Update frontend: `npx vercel deploy --prod --yes`.
+- Deploys are automatic on push to `main`: Vercel builds the frontend from Git, and the VPS runs `teacherreader-deploy.timer` (60 s) → `/usr/local/bin/teacherreader-deploy` → `scripts/vps-deploy.sh`, which fetches `origin/main`, rebuilds and rolls back if the healthcheck fails. `/opt/teacherreader` is a git checkout; `.env` stays untracked because it is gitignored.
+- The Dockerfile runs `tsc --noEmit` and the test suite in the build stage, so a broken commit never produces an image. Never add `--no-verify`-style escapes there: the VPS relies on that gate.
+- Manual backend update is contingency only (see "Atualizar o backend manualmente" in `DEPLOY.md`); frontend can still be forced with `npx vercel deploy --prod --yes`.
 - Full runbook, verification and rollback: `DEPLOY.md`.
 - Firebase Auth authorized domains must include `teacherreader.vercel.app` for the optional Google Drive login. Activation checklist (authorized domain, Google provider, Drive API, OAuth consent screen) is in `DEPLOY.md`.
 - Drive auth/API failures are translated to actionable pt-BR in `src/utils/driveApiErrors.ts` (pure, tested). Extend that instead of surfacing raw `Firebase: Error (auth/...)` text.

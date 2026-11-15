@@ -1,0 +1,39 @@
+name: CI
+
+# Porteiro de qualidade: roda em todo push/PR. O deploy do backend na VPS é
+# feito pelo próprio servidor (systemd timer → scripts/vps-deploy.sh), e o
+# frontend é deployado pela integração Git da Vercel. Aqui só verificamos.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Testes
+        run: npx tsx --test "src/utils/*.test.ts"
+
+      - name: Build do frontend
+        run: npm run build
