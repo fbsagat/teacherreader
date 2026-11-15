@@ -217,15 +217,18 @@ O login não usa `gen-lang-client-0186216759.firebaseapp.com` como `authDomain` 
 Consequências:
 
 - `teacherreader.vercel.app` precisa estar em *Authorized domains* (já coberto no passo 2).
-- O cliente OAuth do Firebase precisa ter `https://teacherreader.vercel.app/__/auth/handler` em **Authorized redirect URIs** (Google Cloud Console → APIs e Serviços → Credenciais → o cliente "Web client (auto created by Google Service)"). Sem isso o Google mostra "Acesso bloqueado: a solicitação desse app é inválida".
+- O cliente OAuth do Firebase precisa ter `https://teacherreader.vercel.app/__/auth/handler` em **Authorized redirect URIs** (Google Cloud Console → APIs e Serviços → Credenciais → o cliente "Web client (auto created by Google Service)", id `781206693622-88l264tnost8a1pinqmdnrc3n3rvrh4u`). Sem isso o Google mostra "Acesso bloqueado: a solicitação desse app é inválida" (`Error 400: redirect_uri_mismatch`) e o login nunca conclui — a mensagem aparece antes de o app receber qualquer resposta, então não é falha de código. Depois de salvar, aguarde alguns minutos: o Google demora para propagar a alteração.
+- **Não remova** `https://gen-lang-client-0186216759.firebaseapp.com/__/auth/handler` da mesma lista. Ele é o redirect padrão do Firebase e é o único usado em `npm run dev` (localhost/dev mantêm `authDomain = firebaseapp.com`) e por qualquer build antigo em cache. Ao adicionar o URI do Vercel, o padrão deve ser mantido em paralelo — trocar um pelo outro quebra o ambiente local.
 - Deploys de **preview** usam o próprio domínio como `authDomain`; cada preview novo precisa ser autorizado no Firebase **e** ter o `redirect_uri` correspondente para o Drive funcionar ali.
 - Em `localhost` o `authDomain` continua sendo `firebaseapp.com`, então o `npm run dev` não depende do proxy.
+- O token do Drive fica **só na memória** (decisão de segurança): recarregar a página, abrir outra aba ou passar ~1h exige reconectar — isso é esperado, não é bug. Se a *Tela de consentimento OAuth* estiver em **Testing**, até o refresh token expira a cada 7 dias; nesse caso publicar o app (Publishing status → In production) evita a reconexão semanal.
 
 Erros comuns já traduzidos no app (ver `src/utils/driveApiErrors.ts`):
 
 | Situação | Mensagem |
 |---|---|
 | Domínio fora da lista do Firebase | "o domínio X não está autorizado no Firebase" |
+| `redirect_uri` ausente no cliente OAuth | "Acesso bloqueado: a solicitação desse app é inválida" → cadastrar `https://<domínio-do-site>/__/auth/handler` em Authorized redirect URIs |
 | Google Drive API desativada | "A Google Drive API não está ativada no projeto do Google Cloud" |
 | Consent screen em teste | "Erro 403: access_denied" → adicionar usuário de teste |
 | Escopo insuficiente | "autorizou permissões insuficientes" |

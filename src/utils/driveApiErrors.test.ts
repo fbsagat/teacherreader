@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   describeDriveApiError,
   describeDriveAuthError,
+  driveAuthHandlerUrl,
   extractAuthErrorCode,
   extractHostname,
   shouldFallbackToRedirect
@@ -44,6 +45,36 @@ test('describeDriveAuthError explains consent-screen test users when the popup c
   const guidance = describeDriveAuthError(err, 'https://teacherreader.vercel.app');
 
   assert.match(String(guidance.action), /consentimento OAuth/);
+});
+
+test('driveAuthHandlerUrl points at the first-party authDomain used in production', () => {
+  assert.equal(
+    driveAuthHandlerUrl('https://teacherreader.vercel.app'),
+    'https://teacherreader.vercel.app/__/auth/handler'
+  );
+  assert.equal(
+    driveAuthHandlerUrl('https://teacherreader-git-main-fbsagat.vercel.app/'),
+    'https://teacherreader-git-main-fbsagat.vercel.app/__/auth/handler'
+  );
+  assert.equal(driveAuthHandlerUrl('http://localhost:3000'), null);
+  assert.equal(driveAuthHandlerUrl('http://127.0.0.1:3000'), null);
+  assert.equal(driveAuthHandlerUrl('http://minha-maquina.local'), null);
+  assert.equal(driveAuthHandlerUrl('   '), null);
+});
+
+test('describeDriveAuthError mentions the missing redirect URI when the popup closes', () => {
+  const err = Object.assign(new Error('Firebase: Error (auth/popup-closed-by-user).'), {
+    code: 'auth/popup-closed-by-user'
+  });
+  const guidance = describeDriveAuthError(err, 'https://teacherreader.vercel.app');
+  assert.match(
+    String(guidance.action),
+    /https:\/\/teacherreader\.vercel\.app\/__\/auth\/handler/
+  );
+  assert.match(String(guidance.action), /Authorized redirect URIs/);
+
+  const local = describeDriveAuthError(err, 'http://localhost:3000');
+  assert.doesNotMatch(String(local.action), /localhost\/__\/auth\/handler/);
 });
 
 test('describeDriveAuthError preserves pt-BR messages that do not come from Firebase', () => {

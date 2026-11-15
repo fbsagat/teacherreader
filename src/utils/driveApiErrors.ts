@@ -60,6 +60,22 @@ export function shouldFallbackToRedirect(err: unknown): boolean {
   );
 }
 
+const LOCAL_HOST_PATTERN = /^(?:localhost|127\.0\.0\.1|\[::1\]|.*\.local)$/i;
+
+/**
+ * `redirect_uri` que o cliente OAuth precisa ter cadastrado. Em produção é o
+ * próprio domínio do app, porque o `authDomain` do Firebase é servido por ele
+ * (rewrite em `vercel.json`); em localhost o Firebase continua usando o handler
+ * do `firebaseapp.com`. Retorna `null` quando o host não ajuda (localhost/SSR).
+ */
+export function driveAuthHandlerUrl(origin: string): string | null {
+  const host = extractHostname(origin);
+  if (!host) return null;
+  const hostname = host.replace(/:\d+$/, '').toLowerCase();
+  if (!hostname || LOCAL_HOST_PATTERN.test(hostname)) return null;
+  return `https://${host}/__/auth/handler`;
+}
+
 /**
  * Converte um erro de `signInWithPopup` em orientação concreta. Quando o erro
  * não é do Firebase, preserva a mensagem original (já em pt-BR).
@@ -92,13 +108,19 @@ export function describeDriveAuthError(err: unknown, origin: string): DriveAuthE
           'Permita pop-ups para este site (ícone na barra de endereço) e clique em "Entrar com Google" novamente.'
       };
     case 'auth/popup-closed-by-user':
-    case 'auth/cancelled-popup-request':
+    case 'auth/cancelled-popup-request': {
+      // Os dois bloqueios que o Google mostra dentro da janela de login: falta
+      // de `redirect_uri` no cliente OAuth e consent screen em modo de teste.
+      const handlerUrl = driveAuthHandlerUrl(origin);
+      const redirectUriHint = handlerUrl
+        ? `Se a janela mostrou "Acesso bloqueado: a solicitação desse app é inválida", falta cadastrar ${handlerUrl} em Authorized redirect URIs do cliente OAuth (Google Cloud Console → APIs e Serviços → Credenciais).`
+        : 'Se a janela mostrou "Acesso bloqueado: a solicitação desse app é inválida", falta cadastrar o redirect_uri do app em Authorized redirect URIs do cliente OAuth (Google Cloud Console → APIs e Serviços → Credenciais).';
       return {
         code,
         message: 'A janela de login do Google foi fechada antes de concluir.',
-        action:
-          'Se apareceu "Erro 403: access_denied", a tela de consentimento OAuth está em modo de teste: adicione sua conta Google como usuário de teste (ou publique o app) no Google Cloud Console → APIs e Serviços → Tela de consentimento OAuth.'
+        action: `${redirectUriHint} Se apareceu "Erro 403: access_denied", a tela de consentimento OAuth está em modo de teste: adicione sua conta Google como usuário de teste (ou publique o app) no Google Cloud Console → APIs e Serviços → Tela de consentimento OAuth.`
       };
+    }
     case 'auth/account-exists-with-different-credential':
       return {
         code,
