@@ -170,6 +170,31 @@ function splitAtConjunctionOrWord(segment: string, maxChars: number): string[] {
 }
 
 /**
+ * Splits on a delimiter regex while keeping the delimiter attached to the
+ * preceding chunk. Avoids lookbehind (Safari < 16.4 fails at parse time).
+ */
+function splitKeepingDelimiter(text: string, delimiter: RegExp): string[] {
+  const parts: string[] = [];
+  const regex = new RegExp(delimiter.source, 'g');
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match[0].length === 0) {
+      regex.lastIndex += 1;
+      continue;
+    }
+    const end = match.index + match[0].length;
+    parts.push(text.slice(lastIndex, end));
+    lastIndex = end;
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  return parts;
+}
+
+/**
  * Splits a long sentence or paragraph into ordered speech-safe chunks <= maxChunkChars
  * at natural sentence/clause boundaries so neither cloud TTS (TikTok / Google GTX / Gemini)
  * nor browser SpeechSynthesis ever truncates or swallows words in the middle of long sentences.
@@ -190,8 +215,7 @@ export function splitTextIntoTtsChunks(
   if (prepared.length <= limit) return [prepared];
 
   // Step 1: Split on sentence boundaries (. ! ? ; :) keeping punctuation with preceding unit
-  const primaryUnits = prepared
-    .split(/(?<=[.!?;:])\s+/)
+  const primaryUnits = splitKeepingDelimiter(prepared, /[.!?;:]\s+/)
     .map(u => u.trim())
     .filter(Boolean);
 
@@ -202,8 +226,7 @@ export function splitTextIntoTtsChunks(
       fineUnits.push(unit);
       continue;
     }
-    const commaUnits = unit
-      .split(/(?<=,)\s+/)
+    const commaUnits = splitKeepingDelimiter(unit, /,\s+/)
       .map(c => c.trim())
       .filter(Boolean);
 

@@ -382,16 +382,16 @@ Arquivo: `server.ts` (referências do commit atual).
   `calculateSimilarity('', x) = 100` → guards.
 - Aceite: testes para cada item acima.
 
-### [ ] 2.11 Fechamento da fase 2
-- [ ] lint + testes + build
-- [ ] revisar `todo.md`
-- [ ] commit: `Confiabilidade: settings, Drive, servidor e acessibilidade`
+### [x] 2.11 Fechamento da fase 2
+- [x] lint + testes + build
+- [x] revisar `todo.md`
+- [x] commit: `Confiabilidade: settings, Drive, servidor e acessibilidade`
 
 ---
 
 # Fase 3 (detalhada) — Performance e higiene de build
 
-### [ ] 3.1 Code splitting do bundle (860 kB / 257 kB gzip)
+### [x] 3.1 Code splitting do bundle (860 kB / 257 kB gzip)
 - Onde: `App.tsx:3-20` (todos os modais estáticos), `:35-49`
   (`googleDriveSyncService` → Firebase), `DonateCoffeeModal.tsx:2` (qrcode).
 - Ações:
@@ -404,132 +404,135 @@ Arquivo: `server.ts` (referências do commit atual).
 - Aceite: chunk inicial < 350 kB gzip; login do Drive continua funcionando;
   modais abrem sem flash perceptível.
 
-### [ ] 3.2 Remover peso morto do `public/`
-- [ ] `public/assets/aistudio/shadowreader_aprenda_ingl_s_com_seus_livros_94a71ff3.html`
+### [x] 3.2 Remover peso morto do `public/`
+- [x] `public/assets/aistudio/shadowreader_aprenda_ingl_s_com_seus_livros_94a71ff3.html`
   (166 kB, protótipo antigo publicado em produção) → remover.
-- [ ] `favicon.ico` (360 kB) duplicado na raiz e em `public/` → otimizar para
+- [x] `favicon.ico` (360 kB) duplicado na raiz e em `public/` → otimizar para
   ~15–30 kB, manter só `public/` e declarar `<link rel="icon">` no `index.html`.
 - Aceite: `dist/` sem o HTML antigo e com favicon < 30 kB.
 
-### [ ] 3.3 Cabeçalho do HTML e carregamento de terceiros
-- [ ] pdf.js carregado de CDN no `<head>`, bloqueante e sem SRI
+### [x] 3.3 Cabeçalho do HTML e carregamento de terceiros
+- [x] pdf.js carregado de CDN no `<head>`, bloqueante e sem SRI
   (`index.html:15`) → carregar sob demanda no import de PDF; adicionar
   `integrity`/`crossorigin` quando carregado.
-- [ ] Adicionar `theme-color`, `apple-touch-icon` e `color-scheme` por tema
+- [x] Adicionar `theme-color`, `apple-touch-icon` e `color-scheme` por tema
   (hoje scrollbars/inputs nativos ficam do tema errado no claro/sépia).
-- [ ] `::-webkit-scrollbar-thumb` hardcoded (`index.css:239-245`) → usar tokens
+- [x] `::-webkit-scrollbar-thumb` hardcoded (`index.css:239-245`) → usar tokens
   do tema.
-- [ ] Manter título/OG em inglês (decisão registrada); só garantir
+- [x] Manter título/OG em inglês (decisão registrada); só garantir
   `og:image`/`og:url` válidos.
 - Aceite: import de PDF continua funcionando offline-de-CDN com mensagem pt-BR.
 
-### [ ] 3.4 Configuração de build
-- [ ] `vite.config.ts:11` `__dirname` → `import.meta.dirname` (aviso do build).
-- [ ] Definir `build.target` explícito (hoje herda default e o bundle pode
+### [x] 3.4 Configuração de build
+- [x] `vite.config.ts:11` `__dirname` → `import.meta.dirname` (aviso do build).
+- [x] Definir `build.target` explícito (hoje herda default e o bundle pode
   incluir lookbehind de `ttsPlayback.ts:180,192` e `shadowing.ts:729`, que
   quebra Safari/iOS < 16.4 em parse-time) → substituir lookbehind por
   split com capture group.
 - Aceite: build sem warnings; bundle sem lookbehind.
 
-### [ ] 3.5 Fechamento da fase 3
-- [ ] medir bundle antes/depois e registrar no PR
-- [ ] commit: `Performance: code splitting, favicon e carregamento do pdf.js`
+### [x] 3.5 Fechamento da fase 3
+- [x] medir bundle antes/depois e registrar no PR
+- [x] commit: `Performance: code splitting, favicon e carregamento do pdf.js`
+- Resultado: chunk inicial **261,7 kB → 188,5 kB gzip**; 9 modais + `firebase/auth`
+  viraram chunks sob demanda; `favicon.ico` **368 kB → 591 B**; pdf.js saiu do
+  `<head>` (carregado só no import de PDF, com SRI).
 
 ---
 
 # Fase 4 (detalhada) — Docs e agentes
 
-### [ ] 4.1 AGENTS.md
-- [ ] Corrigir `"No CI or pre-commit hooks"` (falso): descrever
+### [x] 4.1 AGENTS.md
+- [x] Corrigir `"No CI or pre-commit hooks"` (falso): descrever
   `.github/workflows/ci.yml` (npm ci, lint, testes, build) e que ele **não**
   bloqueia deploy.
-- [ ] `engines`: `>=22` → `>=22.18` (Vite 8 pede ≥22.12; `npm start` =
+- [x] `engines`: `>=22` → `>=22.18` (Vite 8 pede ≥22.12; `npm start` =
   `node server.ts` pede type stripping nativo).
-- [ ] Substituir a nota histórica sobre `.env.local` por aviso atual: existe
+- [x] Substituir a nota histórica sobre `.env.local` por aviso atual: existe
   `.env.local` com `VERCEL_OIDC_TOKEN` (Vercel CLI), gitignored — nunca
   commitar/copiar para a VPS.
-- [ ] Registrar que libs do cliente ficam em `devDependencies` **de propósito**
+- [x] Registrar que libs do cliente ficam em `devDependencies` **de propósito**
   (imagem da API usa `npm ci --omit=dev`).
-- [ ] Registrar que o título/OG em inglês é intencional (exceção à regra pt-BR).
-- [ ] Documentar acoplamento de build: `vercel.json:29` fixa o host da API no
+- [x] Registrar que o título/OG em inglês é intencional (exceção à regra pt-BR).
+- [x] Documentar acoplamento de build: `vercel.json:29` fixa o host da API no
   CSP; trocar `VITE_API_BASE_URL` exige editar o CSP e redeploy.
-- [ ] Seção “onde as coisas vivem / gotchas”: strings inline em `App.tsx` e
+- [x] Seção “onde as coisas vivem / gotchas”: strings inline em `App.tsx` e
   `components` (não há i18n), contrato `/api/voice-hub/*` (request/response e
   formato de `providerUsed`), `src/data/` (SAMPLE_BOOKS consumido por testes),
   `dist/` e `.vercel/` gerados.
-- [ ] Checklist “adicionar um card/step”: tipo em
+- [x] Checklist “adicionar um card/step”: tipo em
   `types/shadowreader.ts`, `STEP_CARD_META`, `buildEffectiveCardSequence`,
   migração em `loadSavedSettings`, render em `App.tsx`, preset no Settings.
-- [ ] Convenções anti-bug (aprendidas nesta revisão): sem efeito colateral em
+- [x] Convenções anti-bug (aprendidas nesta revisão): sem efeito colateral em
   updater de `setState`; nunca `toISOString().slice(0,10)` para “dia” do
   usuário; não usar `select-none` global; toda string de UI em pt-BR.
-- [ ] Formatos aceitos: incluir `.markdown` e `.htm`.
-- [ ] Nota de segurança: restringir a API key web do Firebase por referrer no
+- [x] Formatos aceitos: incluir `.markdown` e `.htm`.
+- [x] Nota de segurança: restringir a API key web do Firebase por referrer no
   Google Cloud.
 
-### [ ] 4.2 README.md
-- [ ] Pré-requisitos: Node 22.18+.
-- [ ] `cp -n .env.example .env` (hoje sobrescreve um `.env` com chave válida).
-- [ ] Corrigir “funciona sem GEMINI_API_KEY”: TTS cai em fallback, correção de
+### [x] 4.2 README.md
+- [x] Pré-requisitos: Node 22.18+.
+- [x] `cp -n .env.example .env` (hoje sobrescreve um `.env` com chave válida).
+- [x] Corrigir “funciona sem GEMINI_API_KEY”: TTS cai em fallback, correção de
   pronúncia devolve 503.
-- [ ] Como rodar 1 teste (`npx tsx --test src/utils/shadowing.test.ts`) e que
+- [x] Como rodar 1 teste (`npx tsx --test src/utils/shadowing.test.ts`) e que
   são `node:test` puros.
-- [ ] Completar estrutura: `src/components/`, `src/data/`, `scripts/`,
+- [x] Completar estrutura: `src/components/`, `src/data/`, `scripts/`,
   `Dockerfile`, `.github/workflows/ci.yml`.
-- [ ] Remover duplicação da tabela de produção (apontar para DEPLOY.md).
-- [ ] Troubleshooting local: porta 3000 ocupada, 503 sem chave, `npm start` sem
+- [x] Remover duplicação da tabela de produção (apontar para DEPLOY.md).
+- [x] Troubleshooting local: porta 3000 ocupada, 503 sem chave, `npm start` sem
   `dist`.
 - [ ] Badge de CI (opcional).
 
-### [ ] 4.3 DEPLOY.md
-- [ ] **Segurança (prioritário):** o `tar` manual (`:106-113`) exclui `.env` mas
+### [x] 4.3 DEPLOY.md
+- [x] **Segurança (prioritário):** o `tar` manual (`:106-113`) exclui `.env` mas
   não `.env.local` → trocar por `--exclude='.env*' --exclude=.vercel
   --exclude='tmp_probe*.ts'`.
-- [ ] Remover `PORT=3000` do `.env` da VPS (compose fixa 3000; só confunde) e
+- [x] Remover `PORT=3000` do `.env` da VPS (compose fixa 3000; só confunde) e
   remover `http://localhost:3000` do `CORS_ORIGINS` de produção.
-- [ ] Passo 0 do primeiro install: clonar em `/opt/teacherreader` + criar `.env`
+- [x] Passo 0 do primeiro install: clonar em `/opt/teacherreader` + criar `.env`
   antes de rodar `install-vps-auto-deploy.sh`.
-- [ ] Corrigir diagrama: `git checkout -f -B main "$REMOTE_SHA"` (não
+- [x] Corrigir diagrama: `git checkout -f -B main "$REMOTE_SHA"` (não
   `origin/main`).
-- [ ] Corrigir “CI em todo push/PR” → push na `main`, PRs e `workflow_dispatch`.
-- [ ] Corrigir “rollback = `compose down`” (isso é desligar); rollback real é
+- [x] Corrigir “CI em todo push/PR” → push na `main`, PRs e `workflow_dispatch`.
+- [x] Corrigir “rollback = `compose down`” (isso é desligar); rollback real é
   `vps-deploy.sh` no commit anterior / wrapper.
-- [ ] Corrigir `trust proxy`: o Express confia em exatamente 1 hop (não “confia
+- [x] Corrigir `trust proxy`: o Express confia em exatamente 1 hop (não “confia
   no X-Forwarded-For” genericamente).
-- [ ] Documentar `.vercel/` não versionado: `npx vercel link` antes de
+- [x] Documentar `.vercel/` não versionado: `npx vercel link` antes de
   `vercel deploy`.
-- [ ] Pré-requisito de `sudo` sem senha para o service (`User=ubuntu` +
+- [x] Pré-requisito de `sudo` sem senha para o service (`User=ubuntu` +
   `sudo docker`).
-- [ ] Instruções de build Docker local para validar o gate.
-- [ ] Tabela única de variáveis: servidor, build (`VITE_API_BASE_URL`) e
+- [x] Instruções de build Docker local para validar o gate.
+- [x] Tabela única de variáveis: servidor, build (`VITE_API_BASE_URL`) e
   operação (`REPO`, `SERVICE`, `HEALTH_URL`, `HEALTH_ATTEMPTS`, `BRANCH`).
-- [ ] Marcar a cota do Gemini como “verificada em <data>” (número externo).
-- [ ] Documentar `connect-src` do CSP ↔ `VITE_API_BASE_URL` e o rewrite
+- [x] Marcar a cota do Gemini como “verificada em <data>” (número externo).
+- [x] Documentar `connect-src` do CSP ↔ `VITE_API_BASE_URL` e o rewrite
   `/api/` ausente no Vercel (404 sem dica).
-- [ ] Corrigir formato de `providerUsed` na cadeia de fallback.
+- [x] Corrigir formato de `providerUsed` na cadeia de fallback.
 
-### [ ] 4.4 .env.example / package.json / scripts / ignorers
-- [ ] `.env.example`: separar blocos “Servidor (dotenv)” × “Frontend (build
+### [x] 4.4 .env.example / package.json / scripts / ignorers
+- [x] `.env.example`: separar blocos “Servidor (dotenv)” × “Frontend (build
   Vite)” × “Operação”; adicionar `DISABLE_HMR`; comentar que `PORT` no VPS é
   fixado pelo compose.
-- [ ] `package.json`: `name` → `teacherreader`, descrição/repositório,
+- [x] `package.json`: `name` → `teacherreader`, descrição/repositório,
   `version` inicial real; script `test` (`tsx --test "src/utils/*.test.ts"`) e
   usar em README/AGENTS/CI/Dockerfile; `clean` cross-platform
   (`node -e "require('fs').rmSync('dist',{recursive:true,force:true})"`).
-- [ ] Lockfiles: manter `package-lock.json` (npm em CI/Docker/Vercel) e remover
+- [x] Lockfiles: manter `package-lock.json` (npm em CI/Docker/Vercel) e remover
   `bun.lock` ou documentar que está congelado — hoje os dois convivem.
-- [ ] `scripts/install-vps-auto-deploy.sh:121`: incluir
+- [x] `scripts/install-vps-auto-deploy.sh:121`: incluir
   `firebase-applet-config\.json` no filtro de rebuild (é copiado para a imagem
   em `Dockerfile:10`).
-- [ ] `.gitattributes`: `*.sh text eol=lf`.
-- [ ] `.dockerignore`/`.vercelignore`: remover `Dockerfile` duplicado, excluir
+- [x] `.gitattributes`: `*.sh text eol=lf`.
+- [x] `.dockerignore`/`.vercelignore`: remover `Dockerfile` duplicado, excluir
   `.vercel/` e `bun.lock`.
-- [ ] `Dockerfile`: `COPY .npmrc` e remover flags duplicadas (ou justificar).
+- [x] `Dockerfile`: `COPY .npmrc` e remover flags duplicadas (ou justificar).
 
-### [ ] 4.5 Fechamento da fase 4
-- [ ] diff revisado por um “leitor cético”: nenhuma afirmação do doc deve
+### [x] 4.5 Fechamento da fase 4
+- [x] diff revisado por um “leitor cético”: nenhuma afirmação do doc deve
   contradizer o código
-- [ ] commit: `docs: alinhar README, AGENTS e DEPLOY com o código`
+- [x] commit: `docs: alinhar README, AGENTS e DEPLOY com o código`
 
 ---
 
@@ -578,10 +581,10 @@ Hoje não existe um único `console.error` no projeto — falhas são `catch {}`
   distratores (`:363-378`).
 
 ### [ ] 5.4 Testes que faltam
-- [ ] `fileParsers.test.ts` (ver 2.9a).
+- [x] `fileParsers.test.ts` (ver 2.9a).
 - [ ] `cardSequencePresets.test.ts` (`formatCardSequenceSummary`,
   `STEP_CARD_META`, presets).
-- [ ] `normalizeSettings` e `localDayKey`.
+- [x] `normalizeSettings` e `localDayKey`.
 - [ ] Casos de borda: livro vazio, livro de 1 frase, CRLF em CSV/SRT/RTF,
   `alignPortugueseClauses` com `P <= M`, `parseDriveBackupSnapshot` rejeitando
   livro inválido.
@@ -619,13 +622,13 @@ Hoje não existe um único `console.error` no projeto — falhas são `catch {}`
 
 ```bash
 npm run lint
-npx tsx --test "src/utils/*.test.ts"
+npm test
 npm run build
 ```
 
-- [ ] zero warnings novos no build
-- [ ] nenhuma string de UI em inglês (exceto título/OG, por decisão)
-- [ ] `grep` de `toISOString().slice(0,10)` retorna só usos legítimos
-- [ ] `grep` de `localStorage` fora de `storageService.ts` retorna zero
-- [ ] `grep` de `select-none` no `index.html` retorna zero
-- [ ] `todo.md` atualizado com o que foi concluído
+- [x] zero warnings novos no build
+- [x] nenhuma string de UI em inglês (exceto título/OG, por decisão)
+- [x] `grep` de `toISOString().slice(0,10)` retorna só usos legítimos
+- [x] `grep` de `localStorage` no código de produção fora de `storageService.ts` retorna zero
+- [x] `grep` de `select-none` no `index.html` retorna zero
+- [x] `todo.md` atualizado com o que foi concluído

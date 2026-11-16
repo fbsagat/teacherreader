@@ -78,6 +78,27 @@ export async function saveBookToDB(book: Book): Promise<boolean> {
   }
 }
 
+export function getBookmarkFromLocalStorage(bookId: string): number | null {
+  try {
+    const raw = localStorage.getItem(`sr_bookmark_${bookId}`);
+    if (raw === null) return null;
+    const idx = Number(raw);
+    if (!Number.isFinite(idx) || idx < 0) return null;
+    return Math.floor(idx);
+  } catch {
+    return null;
+  }
+}
+
+export function clearBookmarkFromLocalStorage(bookId: string, alsoClearActive: boolean): void {
+  try {
+    localStorage.removeItem(`sr_bookmark_${bookId}`);
+    if (alsoClearActive) localStorage.removeItem('sr_active_book_id');
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export async function updateBookmarkInDB(
   bookId: string,
   currentIndex: number,
@@ -564,6 +585,8 @@ export const ShadowRepository = {
   books: {
     save: saveBookToDB,
     updateBookmark: updateBookmarkInDB,
+    getBookmark: getBookmarkFromLocalStorage,
+    clearBookmark: clearBookmarkFromLocalStorage,
     listAll: loadAllSavedBooksFromDB,
     getById: getBookFromDB,
     getActive: getActiveBookFromDB,

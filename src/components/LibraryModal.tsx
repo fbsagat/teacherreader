@@ -7,6 +7,7 @@ import {
   SUPPORTED_FORMATS_BADGES
 } from '../utils/fileParsers';
 import { segmentBookText } from '../utils/shadowing';
+import { ShadowRepository } from '../services/storageService';
 
 export type LibraryTabId = 'catalog' | 'saved' | 'upload';
 
@@ -363,11 +364,8 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                       key={b.id}
                       data-book-id={b.id}
                       onClick={() => {
-                        const savedIdxStr = localStorage.getItem(`sr_bookmark_${b.id}`);
-                        const savedIdx = savedIdxStr ? parseInt(savedIdxStr, 10) : 0;
-                        const validIdx = isNaN(savedIdx)
-                          ? 0
-                          : Math.min(savedIdx, b.sentences.length - 1);
+                        const savedIdx = ShadowRepository.books.getBookmark(b.id) ?? 0;
+                        const validIdx = Math.max(0, Math.min(savedIdx, b.sentences.length - 1));
                         onSelectBook(b, validIdx);
                         onClose();
                       }}

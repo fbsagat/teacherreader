@@ -118,7 +118,7 @@ git checkout --quiet --force -B "$BRANCH" "$REMOTE_SHA" || exit 1
 
 # Mudança só de docs/frontend não justifica reconstruir a API.
 CHANGED=$(git diff --name-only "$LOCAL" "$REMOTE_SHA")
-if ! printf '%s\n' "$CHANGED" | grep -qE '^(server\.ts|src/|scripts/|Dockerfile|docker-compose\.vps\.yml|package\.json|package-lock\.json|tsconfig\.json|\.npmrc)'; then
+if ! printf '%s\n' "$CHANGED" | grep -qE '^(server\.ts|src/|scripts/|Dockerfile|docker-compose\.vps\.yml|package\.json|package-lock\.json|tsconfig\.json|\.npmrc|firebase-applet-config\.json)'; then
   echo "[auto-deploy] sem mudança de backend; nada a reconstruir (HEAD em $(git rev-parse --short HEAD))"
   exit 0
 fi

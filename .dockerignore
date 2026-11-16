@@ -3,7 +3,9 @@ dist
 .git
 .github
 .aistudio
+.vercel
 *.log
 .env
 .env.*
 !.env.example
+bun.lock

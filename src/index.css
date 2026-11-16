@@ -214,6 +214,21 @@ body {
   --color-white: #ffffff;
 }
 
+/* Native controls (inputs, scrollbars, caret) follow the active theme. */
+html {
+  color-scheme: dark;
+}
+[data-theme="light"],
+[data-theme="sepia"] {
+  color-scheme: light;
+}
+[data-theme="dark"],
+[data-theme="forest"],
+[data-theme="ocean"],
+[data-theme="amethyst"] {
+  color-scheme: dark;
+}
+
 /* Keep solid primary CTA buttons with crisp white text in light & sepia modes */
 [data-theme="light"] #btnToggleLoop,
 [data-theme="light"] #btnAllowMicBanner,
@@ -237,11 +252,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #475569;
+  background: var(--color-slate-600);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+  background: var(--color-slate-500);
 }
 
 .no-scrollbar::-webkit-scrollbar {

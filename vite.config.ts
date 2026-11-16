@@ -8,8 +8,13 @@ export default defineConfig(() => {
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(import.meta.dirname, '.'),
       },
+    },
+    build: {
+      // Explicit target so the bundle never relies on syntax older Safari cannot parse
+      // (no lookbehind in the source; keep it that way).
+      target: ['es2020', 'safari14'],
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

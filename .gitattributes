@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Scripts de deploy precisam manter LF para rodar no Linux/serviço systemd.
+*.sh text eol=lf

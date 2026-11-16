@@ -3,17 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b111e" />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Teacher Reader — Learn While You Read</title>
     <meta name="description" content="Plataforma interativa de leitura bilíngue e treino de pronúncia (Shadowing) em inglês com seus próprios livros em PDF, tradução interlinear palavra por palavra e dicionário integrado." />
     <meta property="og:title" content="Teacher Reader — Learn While You Read" />
     <meta property="og:description" content="Plataforma interativa de leitura bilíngue e treino de pronúncia (Shadowing) em inglês com seus próprios livros em PDF, tradução interlinear palavra por palavra e dicionário integrado." />
     <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://teacherreader.vercel.app" />
+    <meta property="og:image" content="https://teacherreader.vercel.app/apple-touch-icon.png" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://teacherreader.vercel.app/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-    <!-- PDF.js: versão espelhada em PDFJS_VERSION (src/utils/fileParsers.ts). -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- PDF.js (~1 MB) é carregado sob demanda em src/utils/fileParsers.ts. -->
   </head>
   <body class="app-viewport-shell w-full bg-slate-900 text-slate-100 antialiased flex flex-col overflow-hidden">
     <div id="root" class="h-full min-h-0 w-full flex flex-col overflow-hidden"></div>

@@ -1,13 +1,5 @@
 import { getApps, initializeApp } from 'firebase/app';
-import {
-  getAuth,
-  getRedirectResult,
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  signInWithPopup,
-  signInWithRedirect,
-  User
-} from 'firebase/auth';
+import type { Auth, GoogleAuthProvider, User } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { describeDriveApiError, shouldFallbackToRedirect } from '../utils/driveApiErrors';
 import {
@@ -38,18 +30,38 @@ const runtimeConfig = {
 };
 
 const app = getApps().length > 0 ? getApps()[0] : initializeApp(runtimeConfig);
-const auth = getAuth(app);
+
+/**
+ * Firebase Auth (~100 kB) is only needed after the user asks for Drive sync,
+ * so it is loaded on demand instead of shipping in the initial bundle.
+ */
+type FirebaseAuthSdk = typeof import('firebase/auth');
+
+let firebaseAuthPromise: Promise<{
+  auth: Auth;
+  provider: GoogleAuthProvider;
+  sdk: FirebaseAuthSdk;
+}> | null = null;
+
+function loadFirebaseAuth() {
+  if (!firebaseAuthPromise) {
+    firebaseAuthPromise = import('firebase/auth').then(sdk => {
+      const auth = sdk.getAuth(app);
+      const provider = new sdk.GoogleAuthProvider();
+      for (const scope of SCOPES) {
+        provider.addScope(scope);
+      }
+      provider.setCustomParameters({
+        prompt: 'select_account'
+      });
+      return { auth, provider, sdk };
+    });
+  }
+  return firebaseAuthPromise;
+}
 
 /** Atalho usado quando o Firebase recusa o domínio atual. */
 export const FIREBASE_AUTH_SETTINGS_URL = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`;
-
-const provider = new GoogleAuthProvider();
-for (const scope of SCOPES) {
-  provider.addScope(scope);
-}
-provider.setCustomParameters({
-  prompt: 'select_account'
-});
 
 let isSigningIn = false;
 // Strictly in-memory OAuth access token (never persisted to localStorage or sessionStorage)
@@ -101,6 +113,8 @@ export function initDriveAuth(
   onNeedsAuth: (signedInUserWithoutToken: DriveSyncUserInfo | null) => void
 ): () => void {
   let signedInUser: User | null = null;
+  let unsubscribe: (() => void) | null = null;
+  let cancelled = false;
   // Espera o getRedirectResult antes de anunciar "precisa reconectar", para o
   // retorno do fluxo por redirecionamento não piscar como sessão expirada.
   let redirectSettled = false;
@@ -123,49 +137,66 @@ export function initDriveAuth(
     }
   };
 
-  getRedirectResult(auth)
-    .then(result => {
-      if (!result?.user) return;
-      signedInUser = result.user;
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) cachedAccessToken = credential.accessToken;
+  loadFirebaseAuth()
+    .then(({ auth, sdk }) => {
+      if (cancelled) return;
+
+      sdk
+        .getRedirectResult(auth)
+        .then(result => {
+          if (!result?.user) return;
+          signedInUser = result.user;
+          const credential = sdk.GoogleAuthProvider.credentialFromResult(result);
+          if (credential?.accessToken) cachedAccessToken = credential.accessToken;
+        })
+        .catch(() => {
+          // Sem resultado pendente ou falha no retorno: segue o fluxo normal.
+        })
+        .finally(() => {
+          redirectSettled = true;
+          flush();
+        });
+
+      unsubscribe = sdk.onAuthStateChanged(auth, (user: User | null) => {
+        signedInUser = user;
+        if (!user) cachedAccessToken = null;
+        flush();
+      });
     })
     .catch(() => {
-      // Sem resultado pendente ou falha no retorno: segue o fluxo normal.
-    })
-    .finally(() => {
+      // Firebase Auth indisponível: trata como "precisa reconectar".
       redirectSettled = true;
       flush();
     });
 
-  return onAuthStateChanged(auth, (user: User | null) => {
-    signedInUser = user;
-    if (!user) cachedAccessToken = null;
-    flush();
-  });
+  return () => {
+    cancelled = true;
+    unsubscribe?.();
+  };
 }
 
 export async function signInWithGoogleForDrive(): Promise<{
   user: DriveSyncUserInfo;
   accessToken: string;
 }> {
+  const { auth, provider, sdk } = await loadFirebaseAuth();
   try {
     isSigningIn = true;
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
+    const result = await sdk.signInWithPopup(auth, provider);
+    const credential = sdk.GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
       throw new Error('Não foi possível obter a autorização de acesso ao Google Drive.');
     }
     cachedAccessToken = credential.accessToken;
     return {
       user: mapFirebaseUser(result.user),
-      accessToken: cachedAccessToken
+      accessToken: credential.accessToken
     };
   } catch (err) {
     // Navegador bloqueou o pop-up (ou WebView sem suporte): cai para redirect.
     // A página é recarregada pelo Google e o retorno é tratado em initDriveAuth.
     if (shouldFallbackToRedirect(err)) {
-      await signInWithRedirect(auth, provider);
+      await sdk.signInWithRedirect(auth, provider);
       throw new DriveRedirectStartedError();
     }
     throw err;
@@ -184,6 +215,7 @@ export function clearInMemoryDriveAccessToken(): void {
 
 export async function signOutFromGoogleDrive(): Promise<void> {
   cachedAccessToken = null;
+  const { auth } = await loadFirebaseAuth();
   await auth.signOut();
 }
 

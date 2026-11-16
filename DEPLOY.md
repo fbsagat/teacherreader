@@ -12,16 +12,27 @@ O backend roda isolado em `/opt/teacherreader`, escutando apenas em `127.0.0.1:3
 
 ## Variáveis
 
+| Variável | Onde é lida | Para que serve |
+|---|---|---|
+| `GEMINI_API_KEY` | Servidor (dotenv) | TTS/STT e avaliação de pronúncia |
+| `CORS_ORIGINS` | Servidor (dotenv) | Origens do navegador autorizadas (aceita `*` por origem) |
+| `API_ONLY` | Servidor (dotenv) | `true` = só API (sem Vite/`dist/`) |
+| `PORT` | Servidor (dotenv) | Porta local; na VPS o compose fixa 3000 (publicado em `127.0.0.1:3110`) |
+| `VITE_API_BASE_URL` | Build da Vite | URL pública da API usada pelo frontend (exige redeploy) |
+| `DISABLE_HMR` | Dev (Vite) | `true` desliga HMR/file watching (AI Studio) |
+| `REPO` / `SERVICE` / `HEALTH_URL` / `HEALTH_ATTEMPTS` / `BRANCH` | Scripts de deploy | Sobrescrevem os padrões de `scripts/vps-deploy.sh` |
+
 Backend em `/opt/teacherreader/.env` (permissão `600`):
 
 ```dotenv
 GEMINI_API_KEY=...
-CORS_ORIGINS=https://teacherreader.vercel.app,https://teacherreader-*-fbsagats-projects.vercel.app,http://localhost:3000
+CORS_ORIGINS=https://teacherreader.vercel.app,https://teacherreader-*-fbsagats-projects.vercel.app
 API_ONLY=true
-PORT=3000
 ```
 
 - `API_ONLY=true` impede o servidor de tentar montar o Vite/servir `dist/`; o frontend é da Vercel.
+- **Não defina `PORT` no `.env` da VPS**: o `docker-compose.vps.yml` fixa `PORT=3000` no container e publica em `127.0.0.1:3110`. Um `PORT` no `.env` só confunde.
+- **Não inclua `http://localhost:3000` no `CORS_ORIGINS` de produção**; localhost já funciona sem CORS no dev (mesma origem).
 - `CORS_ORIGINS` aceita `*` por origem. Restrinja os previews ao time (`teacherreader-*-fbsagats-projects.vercel.app`): `teacherreader-*.vercel.app` também casaria com um domínio de terceiro chamado `teacherreader-qualquercoisa.vercel.app`, que poderia gastar sua cota do Gemini.
 - A chave Gemini nunca vai para a Vercel nem para o bundle do frontend.
 
@@ -31,7 +42,7 @@ Frontend na Vercel (Production e Preview):
 VITE_API_BASE_URL=https://instance-20260808-1016.tail4096b.ts.net
 ```
 
-É uma variável de **build**: depois de alterá-la, é preciso fazer um novo deploy.
+É uma variável de **build**: depois de alterá-la, é preciso fazer um novo deploy. O `connect-src` do CSP em `vercel.json` fixa esse mesmo host; trocar a URL exige editar o CSP e redeployar.
 
 ## Deploy automático
 
@@ -50,7 +61,7 @@ teacherreader-deploy.timer (60 s)
        └─ /usr/local/bin/teacherreader-deploy
             ├─ git fetch origin main  (deploy key read-only)
             ├─ sem commit novo? sai em silêncio
-            ├─ git checkout -f -B main origin/main
+            ├─ git checkout -f -B main "$REMOTE_SHA"
             ├─ bash scripts/vps-deploy.sh
             │    ├─ docker compose up -d --build
             │    │    └─ Dockerfile roda tsc --noEmit + testes (porteiro)
@@ -68,12 +79,21 @@ teacherreader-deploy.timer (60 s)
 Primeira instalação (uma vez, na VPS, **sem** `sudo` — o script usa `sudo` internamente):
 
 ```bash
+# 0. Clone e .env ANTES de rodar o instalador (ele aborta sem /opt/teacherreader/.env)
+sudo mkdir -p /opt/teacherreader
+sudo chown ubuntu:ubuntu /opt/teacherreader
+git clone git@github.com:fbsagat/teacherreader.git /opt/teacherreader
+sudo install -m 600 -o ubuntu -g ubuntu /dev/null /opt/teacherreader/.env
+sudo nano /opt/teacherreader/.env   # GEMINI_API_KEY, CORS_ORIGINS, API_ONLY=true
+
+# 1. Instalador (chave de deploy, wrapper e systemd timer)
 bash /opt/teacherreader/scripts/install-vps-auto-deploy.sh
 ```
 
-O script gera a chave `~/.ssh/teacherreader_deploy` e, se o `fetch` falhar, imprime a chave pública para cadastrar em **GitHub → repo → Settings → Deploy keys** (sem write access). Rodar de novo depois disso conclui a instalação.
+- O usuário `ubuntu` precisa rodar `sudo docker ...` sem senha (o service roda como `ubuntu`, sem `root`).
+- O script gera a chave `~/.ssh/teacherreader_deploy` e, se o `fetch` falhar, imprime a chave pública para cadastrar em **GitHub → repo → Settings → Deploy keys** (sem write access). Rodar de novo depois disso conclui a instalação.
 
-O CI (`.github/workflows/ci.yml`) roda lint, testes e build em todo push/PR. Ele **não** bloqueia o deploy: a VPS publica o que está na `main`. Se o CI ficar vermelho, corrija ou reverta — o rollback automático só cobre falha de build/healthcheck.
+O CI (`.github/workflows/ci.yml`) roda lint, testes e build em push na `main`, em PRs e via `workflow_dispatch`. Ele **não** bloqueia o deploy: a VPS publica o que está na `main`. Se o CI ficar vermelho, corrija ou reverta — o rollback automático só cobre falha de build/healthcheck.
 
 ### Problemas comuns no deploy automático
 
@@ -104,15 +124,16 @@ Da raiz do projeto, no Windows:
 
 ```powershell
 tar -czf "$env:TEMP\teacherreader-src.tgz" `
-  --exclude=node_modules --exclude=dist --exclude=.git `
-  --exclude=.aistudio --exclude=.env --exclude='*.log' .
+  --exclude=node_modules --exclude=dist --exclude=.git --exclude=.vercel `
+  --exclude=.aistudio --exclude='.env*' --exclude='tmp_probe*.ts' `
+  --exclude='*.log' .
 
 scp "$env:TEMP\teacherreader-src.tgz" memetrigger-vps:/tmp/teacherreader-src.tgz
 
 ssh memetrigger-vps "sudo tar -xzf /tmp/teacherreader-src.tgz -C /opt/teacherreader && sudo chown -R ubuntu:ubuntu /opt/teacherreader && sudo chmod 600 /opt/teacherreader/.env && rm -f /tmp/teacherreader-src.tgz && cd /opt/teacherreader && sudo docker compose -f docker-compose.vps.yml up -d --build"
 ```
 
-O `tar` exclui o `.env`, então as credenciais da VPS não são sobrescritas. O build usa `Dockerfile` + esbuild; a imagem final contém apenas `server.js` e dependências de produção.
+O `tar` exclui `.env`, `.env.local`, `.vercel` e probes temporários, então as credenciais da VPS não são sobrescritas nem vazam para o arquivo. O build usa `Dockerfile` + esbuild; a imagem final contém `server.js` e apenas dependências de produção.
 
 Para mudar apenas o `.env`:
 
@@ -146,15 +167,18 @@ curl -i -X OPTIONS \
 ## Atualizar o frontend
 
 ```powershell
+npx vercel link          # uma vez: .vercel/ não é versionado
 npx vercel deploy --prod --yes
 ```
 
-O projeto já está vinculado em `.vercel/project.json`. Variáveis de ambiente ficam no dashboard da Vercel; para alterar:
+O projeto fica vinculado em `.vercel/project.json` (pasta **não versionada**; rode `npx vercel link` de novo em outra máquina). Variáveis de ambiente ficam no dashboard da Vercel; para alterar:
 
 ```powershell
 npx vercel env add VITE_API_BASE_URL production
 npx vercel deploy --prod --yes
 ```
+
+A Vercel **não** tem rewrite para `/api/*`: sem `VITE_API_BASE_URL` o frontend chama `https://teacherreader.vercel.app/api/...` e recebe 404 do próprio domínio. O frontend sempre monta URLs via `apiUrl()`.
 
 ## Tailscale Funnel
 
@@ -171,31 +195,53 @@ ssh memetrigger-vps "sudo tailscale funnel --https=443 off"
 
 ## Rollback
 
-- Backend: `sudo docker compose -f docker-compose.vps.yml down` (a API sai do ar; o Funnel passa a devolver erro).
+- Backend (rollback real): volte para o commit anterior e reconstrua, como o wrapper faz automaticamente:
+  ```bash
+  sudo systemctl stop teacherreader-deploy.timer
+  git -C /opt/teacherreader reset --hard <sha-anterior>
+  bash /opt/teacherreader/scripts/vps-deploy.sh
+  sudo systemctl start teacherreader-deploy.timer
+  ```
+  `docker compose ... down` **não é rollback**: derruba a API e o Funnel passa a devolver erro.
 - Frontend: `npx vercel rollback` ou redeploy de uma versão anterior no dashboard.
-- Código: recopie uma versão anterior e rode o build novamente.
+- Rollback completo: reverta o commit no GitHub; o timer republica a `main` anterior.
+
+## Testar a imagem Docker localmente
+
+Antes de push (o build da imagem roda typecheck + testes):
+
+```bash
+docker build -t teacherreader-api:local .
+docker run --rm -p 3110:3000 --env-file .env -e API_ONLY=true teacherreader-api:local
+curl -s http://127.0.0.1:3110/api/voice-hub/status
+```
 
 ## Cota do Gemini (voz neural)
 
-O projeto está no **free tier** do Gemini API: os modelos TTS aceitam ~10 requisições por dia (o 429 traz `generate_content_free_tier_requests, limit: 10`). Cada frase tocada consome 1 requisição por bloco de 240 caracteres — ou seja, o free tier não sustenta uso real de voz neural.
+O projeto está no **free tier** do Gemini API: os modelos TTS aceitam ~10 requisições por dia (o 429 traz `generate_content_free_tier_requests, limit: 10`; valor externo, verificado em 16/11/2026). Cada frase tocada consome 1 requisição por bloco de 240 caracteres — ou seja, o free tier não sustenta uso real de voz neural.
 
 Cadeia de fallback do TTS (não reordene sem motivo):
 
-1. `gemini-3.8-flash-tts` (principal)
-2. `gemini-3.8-flash-lite-tts` (reserva quando o principal esgota)
-3. Worker neural do TikTok (`gemini_tts:<voz>:...` no `providerUsed`)
-4. Google Translate GTX
+1. `gemini-3.8-flash-tts` (principal) → `providerUsed: "gemini_tts"`
+2. `gemini-3.8-flash-lite-tts` (reserva quando o principal esgota) → `providerUsed: "gemini_tts"`
+3. Worker neural do TikTok → `providerUsed: "neural_cloud:<voiceId>"` (ex.: `neural_cloud:br_001`)
+4. Google Translate GTX → `providerUsed: "google_gtx:pt-BR"` (ou `en-US`)
 
-Quando um modelo responde 429, só ele entra em cooldown (o valor vem do `retry in ...` da própria mensagem, limitado a 24h) e o próximo da lista assume; o log mostra `[tts] <modelo> sem cota`. Se todos esgotarem, a API cai no worker do TikTok e o áudio continua funcionando em MP3.
+`provider: "online"` no request pede o caminho leve: tenta GTX e, se falhar, a voz neural — sem repetir o GTX que acabou de falhar.
+
+Quando um modelo responde 429, só ele entra em cooldown (o valor vem do `retry in ...` da própria mensagem, limitado a 24h) e o próximo da lista assume; o log mostra `[tts] <modelo> sem cota`. Três falhas seguidas em 60 s abrem um circuit breaker de 90 s. Se todos esgotarem, a API cai no worker do TikTok e o áudio continua funcionando em MP3.
 
 Para usar a voz neural do Gemini em produção, ative o faturamento do projeto no AI Studio (isso leva a conta ao Tier 1). Sem faturamento, o esperado é o fallback — não é falha de deploy.
 
 ## Segurança e limites
 
-- TTS: 30 requisições/minuto por IP; STT: 20/minuto. O servidor confia em `X-Forwarded-For` porque só é acessível via loopback/Funnel.
+- Rate limit por IP: TTS 30/min, STT 20/min. Roda **antes** do body parser. IPv6 é agregado por `/64`.
+- `trust proxy` = **exatamente 1 hop** (só o Tailscale Funnel fica na frente). Não confie em `X-Forwarded-For` de forma genérica: qualquer hop extra permitiria burlar o limite.
+- Body: TTS 64 kB, STT 9 MB (áudio decodificado limitado a 6 MB), demais rotas 1 MB. O limite de 4,5 MB da Vercel não se aplica: o áudio vai do navegador direto para o Funnel.
+- Timeouts: TTS aborta em 13 s, STT em 7 s, e a conexão é abortada se o cliente desistir — o servidor não continua queimando cota.
+- Erros: cota esgotada → `429` + `Retry-After`; upstream indisponível/fila cheia → `503`; bug real → `500`. O corpo é sempre JSON em pt-BR.
 - O endpoint é público e não tem autenticação. O rate limit protege a cota do Gemini, mas não substitui autenticação se o uso crescer.
-- O body JSON do Express aceita até 15 MB; áudios de pronúncia são curtos. O limite de 4,5 MB da Vercel não se aplica porque o áudio vai direto do navegador para o Funnel.
-- O container roda como usuário `node`, sem portas públicas no host e com log rotacionado (10 MB × 3).
+- O container roda como usuário `node`, sem portas públicas no host (só `127.0.0.1:3110`), com `read_only`, `cap_drop: ALL` e log rotacionado (10 MB × 3).
 
 ## Ativar o Google Drive (backup opcional)
 

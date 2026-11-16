@@ -11,6 +11,10 @@ export interface ParsedBookResult {
 // Keep the version in sync with index.html (PDF.js is loaded from a CDN there).
 export const PDFJS_VERSION = '3.11.174';
 export const PDFJS_BASE_URL = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}`;
+export const PDFJS_SCRIPT_URL = `${PDFJS_BASE_URL}/pdf.min.js`;
+// SRI do pdf.min.js desta versão; se o CDN mudar o arquivo, o navegador recusa.
+export const PDFJS_SCRIPT_INTEGRITY =
+  'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e';
 export const PDFJS_WORKER_URL = `${PDFJS_BASE_URL}/pdf.worker.min.js`;
 
 export const SUPPORTED_FILE_EXTENSIONS = [
@@ -918,35 +922,71 @@ async function extractDocxText(buffer: ArrayBuffer): Promise<string> {
   return paragraphs.join(' ');
 }
 
+interface PdfjsLib {
+  GlobalWorkerOptions: { workerSrc: string };
+  getDocument: (params: { data: ArrayBuffer }) => {
+    promise: Promise<{
+      numPages: number;
+      getPage: (n: number) => Promise<{
+        getTextContent: () => Promise<{ items: Array<{ str: string }> }>;
+      }>;
+    }>;
+  };
+}
+
+let pdfjsLoadPromise: Promise<PdfjsLib> | null = null;
+
 /**
- * Extract text from a PDF file using window.pdfjsLib
+ * PDF.js is ~1 MB and only matters when the user imports a PDF, so it is loaded
+ * on demand (with SRI) instead of blocking every page load from the CDN.
+ */
+function loadPdfjs(): Promise<PdfjsLib> {
+  const win = window as unknown as { pdfjsLib?: PdfjsLib };
+  if (win.pdfjsLib) return Promise.resolve(win.pdfjsLib);
+  if (pdfjsLoadPromise) return pdfjsLoadPromise;
+
+  pdfjsLoadPromise = new Promise<PdfjsLib>((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = PDFJS_SCRIPT_URL;
+    script.async = true;
+    script.crossOrigin = 'anonymous';
+    script.integrity = PDFJS_SCRIPT_INTEGRITY;
+    script.onload = () => {
+      if (win.pdfjsLib) {
+        resolve(win.pdfjsLib);
+      } else {
+        reject(
+          new Error('O leitor de PDF carregou, mas a biblioteca não ficou disponível. Tente novamente.')
+        );
+      }
+    };
+    script.onerror = () => {
+      pdfjsLoadPromise = null;
+      reject(
+        new Error(
+          'Não foi possível carregar o leitor de PDF. Verifique sua conexão com a internet e tente novamente.'
+        )
+      );
+    };
+    document.head.appendChild(script);
+  });
+
+  return pdfjsLoadPromise;
+}
+
+/**
+ * Extract text from a PDF file using PDF.js loaded on demand.
  */
 async function extractPdfText(
   file: File,
   onProgress?: (status: string) => void
 ): Promise<string> {
-  const win = window as unknown as {
-    pdfjsLib?: {
-      GlobalWorkerOptions: { workerSrc: string };
-      getDocument: (params: { data: ArrayBuffer }) => {
-        promise: Promise<{
-          numPages: number;
-          getPage: (n: number) => Promise<{
-            getTextContent: () => Promise<{ items: Array<{ str: string }> }>;
-          }>;
-        }>;
-      };
-    };
-  };
+  const pdfjsLib = await loadPdfjs();
 
-  if (!win.pdfjsLib) {
-    throw new Error('Biblioteca PDF.js não disponível.');
-  }
-
-  win.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
 
   const arrayBuffer = await file.arrayBuffer();
-  const pdf = await win.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
   onProgress?.(`Extraindo texto de ${pdf.numPages} páginas do PDF...`);
   let fullText = '';

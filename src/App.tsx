@@ -1,24 +1,49 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { DictionaryModal } from './components/DictionaryModal';
-import { DonateCoffeeModal, CoffeeCupIcon } from './components/DonateCoffeeModal';
-import {
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CoffeeCupIcon } from './components/CoffeeCupIcon';
+import type {
   DrivePendingConfirmation,
-  DriveSyncUiStatus,
-  GoogleDriveSyncModal
+  DriveSyncUiStatus
 } from './components/GoogleDriveSyncModal';
 import { HeaderBar } from './components/HeaderBar';
-import { LibraryModal } from './components/LibraryModal';
 import {
   BookCompletedModal,
   FallbackSpeechModal,
   PocketModeOverlay
 } from './components/OverlaysAndModals';
-import { PostSentenceChallengeModal } from './components/PostSentenceChallengeModal';
-import { SentenceNavigatorModal } from './components/SentenceNavigatorModal';
-import { SettingsModal, SettingsTabId } from './components/SettingsModal';
-import { StatsModal } from './components/StatsModal';
-import { VocabModal } from './components/VocabModal';
+import type { SettingsTabId } from './components/SettingsModal';
 import { SAMPLE_BOOKS } from './data/dictionaryDb';
+
+// Modals are only needed after a click, so they stay out of the initial bundle.
+// Each one is mounted only while open (all of them render null when closed).
+const DictionaryModal = React.lazy(() =>
+  import('./components/DictionaryModal').then(m => ({ default: m.DictionaryModal }))
+);
+const DonateCoffeeModal = React.lazy(() =>
+  import('./components/DonateCoffeeModal').then(m => ({ default: m.DonateCoffeeModal }))
+);
+const GoogleDriveSyncModal = React.lazy(() =>
+  import('./components/GoogleDriveSyncModal').then(m => ({ default: m.GoogleDriveSyncModal }))
+);
+const LibraryModal = React.lazy(() =>
+  import('./components/LibraryModal').then(m => ({ default: m.LibraryModal }))
+);
+const PostSentenceChallengeModal = React.lazy(() =>
+  import('./components/PostSentenceChallengeModal').then(m => ({
+    default: m.PostSentenceChallengeModal
+  }))
+);
+const SentenceNavigatorModal = React.lazy(() =>
+  import('./components/SentenceNavigatorModal').then(m => ({ default: m.SentenceNavigatorModal }))
+);
+const SettingsModal = React.lazy(() =>
+  import('./components/SettingsModal').then(m => ({ default: m.SettingsModal }))
+);
+const StatsModal = React.lazy(() =>
+  import('./components/StatsModal').then(m => ({ default: m.StatsModal }))
+);
+const VocabModal = React.lazy(() =>
+  import('./components/VocabModal').then(m => ({ default: m.VocabModal }))
+);
 import {
   cancelBackgroundSentencePrefetch,
   evaluateAudioWithCloudStt,
@@ -49,6 +74,7 @@ import {
 } from './services/googleDriveSyncService';
 import { ShadowRepository } from './services/storageService';
 import { describeDriveAuthError } from './utils/driveApiErrors';
+import { getThemeBarColor } from './utils/themeColors';
 import {
   classifySyncDecision,
   computeSnapshotFingerprint,
@@ -395,6 +421,10 @@ export default function App() {
     const scale = Math.min(135, Math.max(85, Number(settings.fontSizeScale) || 110));
     document.documentElement.style.setProperty('--app-font-scale', (scale / 100).toFixed(2));
     document.documentElement.dataset.fontScale = String(scale);
+    // Keep the mobile browser chrome in sync with the reading theme.
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', getThemeBarColor(settings.themeMode));
   }, [settings]);
 
   // Mirror refs so async handlers can compute the next value outside setState
@@ -4008,12 +4038,7 @@ export default function App() {
         showToast(`⚠️ Não foi possível remover "${title}". Tente novamente.`);
         return;
       }
-      try {
-        localStorage.removeItem(`sr_bookmark_${bookId}`);
-        if (wasActive) localStorage.removeItem('sr_active_book_id');
-      } catch {
-        // ignore storage errors
-      }
+      ShadowRepository.books.clearBookmark(bookId, wasActive);
       await refreshSavedBooksList();
 
       if (wasActive) {
@@ -6580,127 +6605,145 @@ export default function App() {
         onExit={handleExitPocketMode}
       />
 
-      {/* MODAL: BUY ME A COFFEE / DONATIONS */}
-      <DonateCoffeeModal
-        isOpen={isDonateModalOpen}
-        onClose={() => setIsDonateModalOpen(false)}
-        onShowToast={showToast}
-      />
+      <Suspense fallback={null}>
+        {/* MODAL: BUY ME A COFFEE / DONATIONS */}
+        {isDonateModalOpen && (
+          <DonateCoffeeModal
+            isOpen={isDonateModalOpen}
+            onClose={() => setIsDonateModalOpen(false)}
+            onShowToast={showToast}
+          />
+        )}
 
-      {/* MODAL: GOOGLE DRIVE INVISIBLE AUTO-SYNC */}
-      <GoogleDriveSyncModal
-        isOpen={isDriveSyncModalOpen}
-        user={driveUser}
-        hasAccessToken={hasDriveToken}
-        status={driveSyncStatus}
-        statusError={driveSyncError}
-        statusHelpUrl={driveAuthHelpUrl}
-        lastSyncedAt={driveLastSyncedAt}
-        remoteFileMeta={driveRemoteFileMeta}
-        pendingConfirmation={drivePendingConfirmation}
-        localSummary={driveLocalSummary}
-        onSignIn={handleDriveSignIn}
-        onSignOut={handleDriveSignOut}
-        onSyncNow={async () => {
-          const token = getInMemoryDriveAccessToken();
-          if (!token) {
-            setHasDriveToken(false);
-            setDriveSyncStatus('needs_reauth');
-            return;
-          }
-          await reconcileWithGoogleDrive(token, true);
-        }}
-        onConfirmInitialUpload={handleConfirmInitialDriveUpload}
-        onConfirmMergeSync={handleConfirmMergeDriveSync}
-        onRestoreFromDriveOnly={handleRestoreFromDriveOnly}
-        onConfirmOverwriteDrive={handleConfirmInitialDriveUpload}
-        onCancelPendingConfirmation={() => {
-          setDrivePendingConfirmation(null);
-          setDriveSyncStatus(hasDriveToken ? 'disconnected' : 'needs_reauth');
-        }}
-        onDeleteRemoteBackup={handleDeleteRemoteDriveBackup}
-        onClose={() => setIsDriveSyncModalOpen(false)}
-      />
+        {/* MODAL: GOOGLE DRIVE INVISIBLE AUTO-SYNC */}
+        {isDriveSyncModalOpen && (
+          <GoogleDriveSyncModal
+            isOpen={isDriveSyncModalOpen}
+            user={driveUser}
+            hasAccessToken={hasDriveToken}
+            status={driveSyncStatus}
+            statusError={driveSyncError}
+            statusHelpUrl={driveAuthHelpUrl}
+            lastSyncedAt={driveLastSyncedAt}
+            remoteFileMeta={driveRemoteFileMeta}
+            pendingConfirmation={drivePendingConfirmation}
+            localSummary={driveLocalSummary}
+            onSignIn={handleDriveSignIn}
+            onSignOut={handleDriveSignOut}
+            onSyncNow={async () => {
+              const token = getInMemoryDriveAccessToken();
+              if (!token) {
+                setHasDriveToken(false);
+                setDriveSyncStatus('needs_reauth');
+                return;
+              }
+              await reconcileWithGoogleDrive(token, true);
+            }}
+            onConfirmInitialUpload={handleConfirmInitialDriveUpload}
+            onConfirmMergeSync={handleConfirmMergeDriveSync}
+            onRestoreFromDriveOnly={handleRestoreFromDriveOnly}
+            onConfirmOverwriteDrive={handleConfirmInitialDriveUpload}
+            onCancelPendingConfirmation={() => {
+              setDrivePendingConfirmation(null);
+              setDriveSyncStatus(hasDriveToken ? 'disconnected' : 'needs_reauth');
+            }}
+            onDeleteRemoteBackup={handleDeleteRemoteDriveBackup}
+            onClose={() => setIsDriveSyncModalOpen(false)}
+          />
+        )}
 
-      {/* MODAL: SENTENCE NAVIGATOR & CEFR FILTER */}
-      <SentenceNavigatorModal
-        isOpen={isSentenceNavOpen}
-        bookTitle={currentBookTitle}
-        sentences={sentences}
-        currentIndex={currentIndex}
-        sentenceProgress={sentenceProgress}
-        onSelectSentence={jumpToSentence}
-        onClose={() => setIsSentenceNavOpen(false)}
-      />
+        {/* MODAL: SENTENCE NAVIGATOR & CEFR FILTER */}
+        {isSentenceNavOpen && (
+          <SentenceNavigatorModal
+            isOpen={isSentenceNavOpen}
+            bookTitle={currentBookTitle}
+            sentences={sentences}
+            currentIndex={currentIndex}
+            sentenceProgress={sentenceProgress}
+            onSelectSentence={jumpToSentence}
+            onClose={() => setIsSentenceNavOpen(false)}
+          />
+        )}
 
-      {/* MODAL: PROGRESS & STUDY STATS */}
-      <StatsModal
-        isOpen={isStatsOpen}
-        stats={studyStats}
-        dailyGoal={settings.dailyGoalSentences || 10}
-        practiceDaysGoal={settings.practiceDaysGoal || 14}
-        onUpdateDailyGoal={goal => handleUpdateSettings({ dailyGoalSentences: goal })}
-        onUpdatePracticeDaysGoal={days => handleUpdateSettings({ practiceDaysGoal: days })}
-        onSpeakWord={w => speakText(w, 'en-US', 0.8)}
-        onOpenDict={w =>
-          setDictWord({
-            word: w,
-            context: currentSentence?.en || ''
-          })
-        }
-        onStartPractice={() => {
-          setIsStatsOpen(false);
-        }}
-        onClose={() => setIsStatsOpen(false)}
-      />
+        {/* MODAL: PROGRESS & STUDY STATS */}
+        {isStatsOpen && (
+          <StatsModal
+            isOpen={isStatsOpen}
+            stats={studyStats}
+            dailyGoal={settings.dailyGoalSentences || 10}
+            practiceDaysGoal={settings.practiceDaysGoal || 14}
+            onUpdateDailyGoal={goal => handleUpdateSettings({ dailyGoalSentences: goal })}
+            onUpdatePracticeDaysGoal={days => handleUpdateSettings({ practiceDaysGoal: days })}
+            onSpeakWord={w => speakText(w, 'en-US', 0.8)}
+            onOpenDict={w =>
+              setDictWord({
+                word: w,
+                context: currentSentence?.en || ''
+              })
+            }
+            onStartPractice={() => {
+              setIsStatsOpen(false);
+            }}
+            onClose={() => setIsStatsOpen(false)}
+          />
+        )}
 
-      {/* MODAL: SETTINGS */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        initialTab={settingsInitialTab}
-        settings={settings}
-        onUpdateSettings={handleUpdateSettings}
-        onClose={() => {
-          setIsSettingsOpen(false);
-        }}
-        onShowToast={showToast}
-      />
+        {/* MODAL: SETTINGS */}
+        {isSettingsOpen && (
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            initialTab={settingsInitialTab}
+            settings={settings}
+            onUpdateSettings={handleUpdateSettings}
+            onClose={() => {
+              setIsSettingsOpen(false);
+            }}
+            onShowToast={showToast}
+          />
+        )}
 
-      {/* MODAL: LIBRARY & PDF UPLOAD */}
-      <LibraryModal
-        isOpen={isLibraryOpen}
-        currentBookId={currentBookId}
-        savedBooks={savedBooks}
-        onClose={() => setIsLibraryOpen(false)}
-        onSelectBook={handleSelectBook}
-        onDeleteSavedBook={handleDeleteSavedBook}
-        onUploadBook={handleUploadBook}
-        onShowToast={showToast}
-      />
+        {/* MODAL: LIBRARY & PDF UPLOAD */}
+        {isLibraryOpen && (
+          <LibraryModal
+            isOpen={isLibraryOpen}
+            currentBookId={currentBookId}
+            savedBooks={savedBooks}
+            onClose={() => setIsLibraryOpen(false)}
+            onSelectBook={handleSelectBook}
+            onDeleteSavedBook={handleDeleteSavedBook}
+            onUploadBook={handleUploadBook}
+            onShowToast={showToast}
+          />
+        )}
 
-      {/* MODAL: SAVED VOCABULARY & SRS FLASHCARDS */}
-      <VocabModal
-        isOpen={isVocabOpen}
-        savedVocab={savedVocab}
-        onClose={() => setIsVocabOpen(false)}
-        onDeleteItem={handleDeleteVocabItem}
-        onRateSrsItem={handleRateSrsItem}
-        onClearAll={handleClearAllVocab}
-        onSpeakText={word => speakText(word, 'en-US', 0.85)}
-        onShowToast={showToast}
-      />
+        {/* MODAL: SAVED VOCABULARY & SRS FLASHCARDS */}
+        {isVocabOpen && (
+          <VocabModal
+            isOpen={isVocabOpen}
+            savedVocab={savedVocab}
+            onClose={() => setIsVocabOpen(false)}
+            onDeleteItem={handleDeleteVocabItem}
+            onRateSrsItem={handleRateSrsItem}
+            onClearAll={handleClearAllVocab}
+            onSpeakText={word => speakText(word, 'en-US', 0.85)}
+            onShowToast={showToast}
+          />
+        )}
 
-      {/* MODAL: WORD DICTIONARY */}
-      <DictionaryModal
-        word={dictWord?.word || null}
-        contextSentence={dictWord?.context || currentSentence?.en || ''}
-        onClose={() => setDictWord(null)}
-        onSpeakWord={w => {
-          stopAllAudio();
-          speakText(w, 'en-US', 0.85);
-        }}
-        onSaveVocab={handleSaveVocabItem}
-      />
+        {/* MODAL: WORD DICTIONARY */}
+        {dictWord !== null && (
+          <DictionaryModal
+            word={dictWord?.word || null}
+            contextSentence={dictWord?.context || currentSentence?.en || ''}
+            onClose={() => setDictWord(null)}
+            onSpeakWord={w => {
+              stopAllAudio();
+              speakText(w, 'en-US', 0.85);
+            }}
+            onSaveVocab={handleSaveVocabItem}
+          />
+        )}
+      </Suspense>
 
       {/* MODAL: BOOK COMPLETED */}
       <BookCompletedModal
@@ -6747,29 +6790,33 @@ export default function App() {
       />
 
       {/* MODAL: POST-SENTENCE CHALLENGES (1: Word Pronunciation, 2: Word Matching) */}
-      <PostSentenceChallengeModal
-        isOpen={Boolean(postSentenceChallengeRequest)}
-        sentenceEn={postSentenceChallengeRequest?.sentenceEn || currentSentence?.en || ''}
-        sentenceIndex={postSentenceChallengeRequest?.sentenceIndex ?? currentIndex}
-        sentenceWordMistakes={postSentenceChallengeRequest?.wordMistakes}
-        enablePronunciationChallenge={
-          postSentenceChallengeRequest?.enablePronunciation ?? true
-        }
-        enableMatchingChallenge={postSentenceChallengeRequest?.enableMatching ?? true}
-        repeatSentenceOnChallengeFail={settings.repeatSentenceOnChallengeFail}
-        audioBeeps={settings.audioBeeps}
-        autoHandsFree={settings.autoHandsFree}
-        handsFreeMaxAttempts={settings.handsFreeMaxAttempts ?? 2}
-        handsFreeChallengeMode={settings.handsFreeChallengeMode ?? 'voice_all'}
-        handsFreeVoiceCommands={settings.handsFreeVoiceCommands ?? true}
-        onSpeakWord={w => speakText(w, 'en-US', 0.85)}
-        onSpeakWordAsync={w => speakText(w, 'en-US', 0.85)}
-        onSpeakPtAsync={pt => speakText(pt, 'pt-BR', 1.05)}
-        onListenWord={w => listenForSpeech(w, 12500, true)}
-        onStopListeningEarly={() => finishSpeechEarlyRef.current?.()}
-        onAbortListening={() => abortSpeechCaptureRef.current?.()}
-        onFinish={outcome => postSentenceChallengeRequest?.resolve(outcome)}
-      />
+      {postSentenceChallengeRequest && (
+        <Suspense fallback={null}>
+          <PostSentenceChallengeModal
+            isOpen={Boolean(postSentenceChallengeRequest)}
+            sentenceEn={postSentenceChallengeRequest?.sentenceEn || currentSentence?.en || ''}
+            sentenceIndex={postSentenceChallengeRequest?.sentenceIndex ?? currentIndex}
+            sentenceWordMistakes={postSentenceChallengeRequest?.wordMistakes}
+            enablePronunciationChallenge={
+              postSentenceChallengeRequest?.enablePronunciation ?? true
+            }
+            enableMatchingChallenge={postSentenceChallengeRequest?.enableMatching ?? true}
+            repeatSentenceOnChallengeFail={settings.repeatSentenceOnChallengeFail}
+            audioBeeps={settings.audioBeeps}
+            autoHandsFree={settings.autoHandsFree}
+            handsFreeMaxAttempts={settings.handsFreeMaxAttempts ?? 2}
+            handsFreeChallengeMode={settings.handsFreeChallengeMode ?? 'voice_all'}
+            handsFreeVoiceCommands={settings.handsFreeVoiceCommands ?? true}
+            onSpeakWord={w => speakText(w, 'en-US', 0.85)}
+            onSpeakWordAsync={w => speakText(w, 'en-US', 0.85)}
+            onSpeakPtAsync={pt => speakText(pt, 'pt-BR', 1.05)}
+            onListenWord={w => listenForSpeech(w, 12500, true)}
+            onStopListeningEarly={() => finishSpeechEarlyRef.current?.()}
+            onAbortListening={() => abortSpeechCaptureRef.current?.()}
+            onFinish={outcome => postSentenceChallengeRequest?.resolve(outcome)}
+          />
+        </Suspense>
+      )}
 
       {/* TOAST NOTIFICATION (Positioned at top-center below header so it never overlaps the Speech Card) */}
       {toastMessage && (

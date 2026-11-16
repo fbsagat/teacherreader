@@ -4,8 +4,9 @@
 node_modules
 dist
 .aistudio
+.vercel
+bun.lock
 AGENTS.md
 Dockerfile
 docker-compose.vps.yml
 server.ts
-Dockerfile

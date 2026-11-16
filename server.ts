@@ -1282,15 +1282,18 @@ async function startServer() {
   // API-only mode: the Vite/static frontend is hosted by Vercel instead.
   if (!apiOnly) {
     if (process.env.NODE_ENV !== 'production') {
-      const viteServerPromise = import('vite').then(({ createServer: createViteServer }) =>
-        createViteServer({
+      const viteServerPromise = import('vite').then(({ createServer: createViteServer }) => {
+        const disableHmr = process.env.DISABLE_HMR === 'true';
+        return createViteServer({
           server: {
             middlewareMode: true,
-            hmr: process.env.DISABLE_HMR === 'true' ? false : { server: httpServer }
+            hmr: disableHmr ? false : true,
+            // Vite 8: o WebSocket do HMR usa `server.ws` (hmr.server virou deprecado).
+            ws: disableHmr ? false : { server: httpServer }
           },
           appType: 'spa'
-        })
-      );
+        });
+      });
       viteServerPromise.catch(err => {
         console.error('Vite middleware initialization failed:', err);
       });

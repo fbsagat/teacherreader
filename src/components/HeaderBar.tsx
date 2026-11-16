@@ -2,7 +2,7 @@ import React from 'react';
 import { ThemeMode } from '../types/shadowreader';
 import type { DriveSyncUiStatus } from './GoogleDriveSyncModal';
 
-import { CoffeeCupIcon } from './DonateCoffeeModal';
+import { CoffeeCupIcon } from './CoffeeCupIcon';
 
 interface HeaderBarProps {
   bookTitle: string;
