@@ -1,4 +1,5 @@
 import { DICT_DB } from '../data/dictionaryDb';
+import { computeEffectiveTtsRate } from './voiceCompatibility';
 import {
   AiPronunciationFeedback,
   CefrLevel,
@@ -15,7 +16,12 @@ import {
 
 export function cleanString(str: string): string {
   if (!str) return '';
-  return str.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .trim();
 }
 
 const ONES_WORDS = [
@@ -188,7 +194,9 @@ export function normalizeSpokenTranscriptNumbers(
     targetContext && /\b(?:one|two)\s+thousand\b/i.test(targetContext)
   );
 
-  let text = rawText;
+  // Normalize typographic apostrophes/quotes first: mobile STT often returns U+2019
+  // ("can’t"), which would otherwise break every contraction rule below.
+  let text = rawText.replace(/[\u2018\u2019\u02BC\u00B4]/g, "'");
 
   // 1. Clock times (e.g. "9:00" -> "nine o'clock" / "nine oclock", "9:30" -> "nine thirty", "9:05" -> "nine oh five")
   text = text.replace(
@@ -306,46 +314,97 @@ export function cleanSpeech(text: string): string {
   return words.join(' ');
 }
 
-const HOMOPHONE_AND_PHONETIC_GROUPS: string[][] = [
-  ['through', 'threw', 'thru', 'true', 'throw', 'thorough', 'though', 'truth', 'two', 'three', 'free', 'tree'],
-  ['though', 'doe', 'dough', 'do', 'so', 'go', 'no', 'low', 'show', 'slow', 'know'],
-  ['thought', 'taught', 'taut', 'tot', 'fought', 'bought', 'brought', 'caught', 'sought', 'short'],
-  ['there', 'their', 'theyre', 'dare', 'air', 'hair', 'where', 'wear'],
+/**
+ * Curated homophone / near-homophone tolerance table.
+ *
+ * Rules for adding a group:
+ * - every word belongs to exactly ONE group (a word appearing twice would let
+ *   unrelated minimal pairs match transitively through that word);
+ * - only words that really sound the same (or are a well-known ESL
+ *   transcription of the same sound) may share a group. Minimal pairs such as
+ *   right/nine, do/so, thought/taught or art/part are NOT homophones and must
+ *   never be accepted (see shadowing.test.ts regression cases).
+ */
+export const HOMOPHONE_AND_PHONETIC_GROUPS: string[][] = [
+  ['through', 'threw', 'thru', 'true', 'throw'],
+  ['though', 'doe', 'dough'],
   ['to', 'too', 'two'],
   ['for', 'four', 'fore'],
   ['one', 'won'],
-  ['six', 'sick', 'seeks', 'sex'],
-  ['saw', 'soar', 'sore', 'so'],
-  ['old', 'hold', 'cold', 'gold', 'bold', 'told', 'fold', 'sold'],
-  ['whole', 'hole', 'hold', 'role', 'roll'],
-  ['boa', 'boar', 'bore', 'bow', 'boy'],
-  ['prey', 'pray', 'play', 'pay'],
-  ['sight', 'site', 'cite', 'side', 'sign'],
-  ['night', 'knight', 'nine', 'light', 'right', 'write'],
-  ['know', 'no', 'now', 'new', 'knew'],
-  ['would', 'wood', 'good', 'could', 'should'],
-  ['here', 'hear', 'ear', 'year', 'years', 'ears'],
-  ['sea', 'see', 'she'],
+  ['there', 'their', 'theyre'],
+  ['where', 'wear'],
+  ['here', 'hear'],
+  ['sea', 'see'],
   ['piece', 'peace', 'peas'],
-  ['weak', 'week', 'wake'],
   ['meat', 'meet'],
-  ['wait', 'weight', 'white'],
-  ['ate', 'eight', 'hate'],
+  ['weak', 'week'],
+  ['wait', 'weight'],
   ['son', 'sun', 'some', 'sum'],
-  ['hour', 'our', 'are'],
+  ['hour', 'our'],
   ['buy', 'by', 'bye'],
-  ['eye', 'i', 'high', 'hi'],
-  ['red', 'read'],
-  ['past', 'passed'],
+  ['eye', 'i'],
+  ['hi', 'high'],
   ['aloud', 'allowed'],
-  ['flower', 'flour']
+  ['flower', 'flour'],
+  ['right', 'write', 'rite'],
+  ['sight', 'site', 'cite'],
+  ['night', 'knight'],
+  ['whole', 'hole'],
+  ['role', 'roll'],
+  ['saw', 'soar', 'sore'],
+  ['would', 'wood'],
+  ['know', 'no'],
+  ['knew', 'new', 'gnu'],
+  ['ate', 'eight'],
+  ['do', 'dew', 'due'],
+  ['so', 'sew', 'sow'],
+  ['past', 'passed'],
+  ['blue', 'blew'],
+  ['cell', 'sell'],
+  ['cent', 'sent', 'scent'],
+  ['dear', 'deer'],
+  ['fair', 'fare'],
+  ['mail', 'male'],
+  ['pair', 'pear'],
+  ['plain', 'plane'],
+  ['rain', 'reign', 'rein'],
+  ['steal', 'steel'],
+  ['tail', 'tale'],
+  ['waist', 'waste'],
+  ['way', 'weigh'],
+  ['which', 'witch'],
+  ['your', 'youre'],
+  ['in', 'inn'],
+  ['not', 'knot'],
+  ['be', 'bee'],
+  ['bare', 'bear'],
+  ['break', 'brake'],
+  ['die', 'dye'],
+  ['heal', 'heel']
 ];
+
+/**
+ * Returns the words that appear in more than one homophone group.
+ * The table must stay collision-free, otherwise two unrelated words can match
+ * transitively (e.g. A~B in one group and B~C in another).
+ */
+export function findDuplicatePhoneticWords(groups: string[][] = HOMOPHONE_AND_PHONETIC_GROUPS): string[] {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const group of groups) {
+    for (const word of group) {
+      if (seen.has(word)) duplicates.add(word);
+      seen.add(word);
+    }
+  }
+  return Array.from(duplicates);
+}
+
 
 export function normalizePhoneticSkeleton(word: string): string {
   if (!word) return '';
   let w = word.toLowerCase().trim();
   if (w === 'through' || w === 'threw' || w === 'thru') return 'tru';
-  if (w === 'though' || w === 'dough' || w === 'doe') return 'to';
   w = w
     .replace(/^kn/, 'n')
     .replace(/^wr/, 'r')
@@ -360,6 +419,14 @@ export function normalizePhoneticSkeleton(word: string): string {
   return w;
 }
 
+const INFLECTION_SUFFIXES = new Set(['s', 'es', 'ed', 'd', 'ing', 'er', 'est', 'ly', 'n', 'en']);
+
+/** True only when `long` is `short` plus a regular English inflection (walk -> walking). */
+function isInflectionOf(short: string, long: string): boolean {
+  if (short.length < 3 || !long.startsWith(short)) return false;
+  return INFLECTION_SUFFIXES.has(long.slice(short.length));
+}
+
 export function isWordMatch(
   tw: string,
   sw: string,
@@ -368,32 +435,43 @@ export function isWordMatch(
   if (!tw || !sw) return false;
   const a = tw.toLowerCase().trim();
   const b = sw.toLowerCase().trim();
+  if (!a || !b) return false;
   if (a === b) return true;
 
   if (strictness === 'strict') {
     // In strict mode, only exact match or 1-letter plural/tense suffix on words >= 5 chars
-    if (a.length >= 5 && b.length >= 5 && Math.abs(a.length - b.length) <= 1) {
-      if (a.startsWith(b) || b.startsWith(a)) return true;
+    if (a.length >= 5 && b.length >= 5) {
+      if (isInflectionOf(a, b) || isInflectionOf(b, a)) return true;
+      if (a.length >= 5 && b.length >= 5 && Math.abs(a.length - b.length) <= 1) {
+        if (a.startsWith(b) || b.startsWith(a)) return true;
+      }
     }
     return false;
   }
 
-  // Check homophones and common Web Speech API single-word phonetic transcriptions
+  // Curated homophones / well-known ESL phonetic transcriptions
   for (const group of HOMOPHONE_AND_PHONETIC_GROUPS) {
     if (group.includes(a) && group.includes(b)) {
       return true;
     }
   }
 
-  // Check normalized phonetic skeleton (e.g., silent -ough / -gh / th-)
-  const skelA = normalizePhoneticSkeleton(a);
-  const skelB = normalizePhoneticSkeleton(b);
-  if (skelA.length >= 2 && skelA === skelB) {
-    return true;
+  // Regular inflections (walk/walking, picture/pictures) — never bare prefixes,
+  // so "art"/"part" and "do"/"so" can no longer match.
+  if (isInflectionOf(a, b) || isInflectionOf(b, a)) return true;
+
+  // Normalized phonetic skeleton (silent -ough / -gh / th-). Only for words long
+  // enough to avoid collapsing real minimal pairs (sight vs sit).
+  if (a.length >= 4 && b.length >= 4) {
+    const skelA = normalizePhoneticSkeleton(a);
+    const skelB = normalizePhoneticSkeleton(b);
+    if (skelA.length >= 3 && skelA === skelB) {
+      return true;
+    }
   }
 
-  if (a.length >= 3 && b.length >= 3) {
-    if (a.startsWith(b) || b.startsWith(a)) return true;
+  // Single-character typo tolerance for longer words (constrictor/constrictor)
+  if (a.length >= 4 && b.length >= 4) {
     let diff = 0;
     const minL = Math.min(a.length, b.length);
     const maxL = Math.max(a.length, b.length);
@@ -401,6 +479,7 @@ export function isWordMatch(
     if (maxL - minL <= maxAllowedDiff) {
       for (let i = 0; i < minL; i++) {
         if (a[i] !== b[i]) diff++;
+        if (diff > maxAllowedDiff) break;
       }
       if (diff <= maxAllowedDiff) return true;
     }
@@ -422,7 +501,8 @@ export function calculateSimilarity(
   const targetWords = cleanTarget.split(/\s+/).filter(Boolean);
   const spokenWords = cleanSpoken.split(/\s+/).filter(Boolean);
   if (targetWords.length === 0) {
-    return { score: 100, wordResults: [], matchedCount: 0, totalWords: 0 };
+    // Empty target can never be "100% correct": there is nothing to pronounce.
+    return { score: 0, wordResults: [], matchedCount: 0, totalWords: 0 };
   }
 
   let matchedCount = 0;
@@ -474,7 +554,10 @@ export function calculateSimilarity(
   }
   const dist = matrix[n][m];
   const maxLen = Math.max(n, m);
-  const stringScore = Math.max(0, Math.round(((maxLen - dist) / maxLen) * 100));
+  const stringScore =
+    maxLen > 0 && Number.isFinite(dist)
+      ? Math.max(0, Math.round(((maxLen - dist) / maxLen) * 100))
+      : 0;
 
   let finalScore = Math.round(wordScore * 0.7 + stringScore * 0.3);
   if (strictness === 'forgiving' && finalScore > 0 && finalScore < 100) {
@@ -482,6 +565,7 @@ export function calculateSimilarity(
   } else if (strictness === 'strict' && finalScore < 100) {
     finalScore = Math.max(0, finalScore - 4);
   }
+  if (!Number.isFinite(finalScore)) finalScore = 0;
 
   return {
     score: finalScore,
@@ -497,9 +581,15 @@ export function getEffectiveSpeed(
   ttsSpeedPt: number,
   speedMultiplier = 1.0
 ): number {
-  const isPt = lang.startsWith('pt');
-  const base = isPt ? (ttsSpeedPt || 1.15) : (ttsSpeedEn || 0.85);
-  return Math.max(0.6, Math.min(1.8, Number((base * speedMultiplier).toFixed(3))));
+  // Same clamped range used for cloud playback so browser and neural voices
+  // never drift apart (1.8x was unintelligible and 0.6x distorted).
+  return computeEffectiveTtsRate({
+    lang,
+    ttsEngine: 'browser_custom',
+    ttsSpeedEn,
+    ttsSpeedPt,
+    speedMultiplier
+  });
 }
 
 const CONTRACTION_SPEECH_MAP: Record<string, string> = {
@@ -695,6 +785,42 @@ const ABBREVIATIONS = [
   'i.e.'
 ];
 
+export const MAX_BOOK_SENTENCE_CHARS = 420;
+
+/**
+ * Splits one over-long sentence into study-size clauses without dropping words.
+ * First tries the linguistic clause segmenter, then hard-splits by characters
+ * if a clause is still above the limit.
+ */
+function splitLongBookSentence(text: string): string[] {
+  const tokens = text.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return [];
+  if (text.length <= MAX_BOOK_SENTENCE_CHARS) return [text.trim()];
+
+  const out: string[] = [];
+  for (const clause of segmentEnglishTokensIntoClauses(tokens)) {
+    const trimmed = clause.trim();
+    if (!trimmed) continue;
+    if (trimmed.length <= MAX_BOOK_SENTENCE_CHARS) {
+      out.push(trimmed);
+      continue;
+    }
+    let buffer = '';
+    for (const token of trimmed.split(/\s+/)) {
+      if (!buffer) {
+        buffer = token;
+      } else if (buffer.length + 1 + token.length > MAX_BOOK_SENTENCE_CHARS) {
+        out.push(buffer);
+        buffer = token;
+      } else {
+        buffer += ` ${token}`;
+      }
+    }
+    if (buffer) out.push(buffer);
+  }
+  return out.length > 0 ? out : [text.trim()];
+}
+
 export function segmentBookText(rawText: string): Sentence[] {
   let cleaned = rawText
     .replace(/(\r\n|\n|\r)/gm, ' ')
@@ -711,8 +837,33 @@ export function segmentBookText(rawText: string): Sentence[] {
     cleaned = cleaned.replace(reg, `__ABBR_${idx}__`);
   });
 
-  const rawSentences = cleaned.match(/[^.!?]+[.!?]+['"”’)]*(\s|$)/g) || [cleaned];
+  // Split on sentence-final punctuation, keeping trailing text that has no final
+  // punctuation (it used to be silently dropped). `(?!\d)` keeps decimals intact.
+  const rawSentences: string[] = [];
+  const sentenceEnd = /[.!?]+(?!\d)['"”’)]*(?=\s|$)/g;
+  let lastEnd = 0;
+  let match: RegExpExecArray | null;
+  while ((match = sentenceEnd.exec(cleaned)) !== null) {
+    rawSentences.push(cleaned.slice(lastEnd, match.index + match[0].length));
+    lastEnd = match.index + match[0].length;
+  }
+  if (lastEnd < cleaned.length) {
+    rawSentences.push(cleaned.slice(lastEnd));
+  }
+
   const parsed: Sentence[] = [];
+
+  const pushSentence = (text: string) => {
+    const restoredText = text.trim();
+    if (!restoredText) return;
+    // Drop pure punctuation/noise only; very short sentences ("Yes!") are valid.
+    if (!/[a-z0-9]/i.test(restoredText)) return;
+    if (restoredText.length <= MAX_BOOK_SENTENCE_CHARS) {
+      parsed.push({ en: restoredText, pt: '' });
+      return;
+    }
+    splitLongBookSentence(restoredText).forEach(en => parsed.push({ en, pt: '' }));
+  };
 
   for (const s of rawSentences) {
     let restored = s.trim();
@@ -721,24 +872,23 @@ export function segmentBookText(rawText: string): Sentence[] {
       restored = restored.replace(reg, abbr);
     });
 
-    if (restored.length > 10 && restored.length < 420) {
-      // If a literary sentence is very long (> 130 chars) and has semicolons or ", and / , but", split into digestible study clauses
-      const wordCount = restored.split(/\s+/).length;
-      if (wordCount > 20 && /([;:]|,\s+(and|but|for|which|while|though)\b)/i.test(restored)) {
-        const subParts = restored
-          .split(/(?<=[;:])\s+|(?<=,)\s+(?=(?:and|but|for|which|while|though)\b)/i)
-          .map(p => p.trim())
-          .filter(p => p.length > 8);
-        if (subParts.length > 1) {
-          subParts.forEach(sp => parsed.push({ en: sp, pt: '' }));
-          continue;
-        }
+    if (!restored) continue;
+
+    // If a literary sentence is very long and has semicolons or ", and / , but",
+    // split into digestible study clauses (all parts are kept — no word loss).
+    const wordCount = restored.split(/\s+/).filter(Boolean).length;
+    if (wordCount > 20 && /([;:]|,\s+(and|but|for|which|while|though)\b)/i.test(restored)) {
+      const subParts = restored
+        .split(/(?:;\s*|:\s*|,\s+(?=(?:and|but|for|which|while|though)\b))/i)
+        .map(p => p.trim())
+        .filter(p => /[a-z0-9]/i.test(p));
+      if (subParts.length > 1) {
+        subParts.forEach(pushSentence);
+        continue;
       }
-      parsed.push({
-        en: restored,
-        pt: ''
-      });
     }
+
+    pushSentence(restored);
   }
 
   return parsed;
@@ -1948,8 +2098,38 @@ export function alignPortugueseClauses(enClauses: string[], fullPt: string): str
   const ptTokens = trimmedPt.split(/\s+/).filter(Boolean);
   const P = ptTokens.length;
   const M = enClauses.length;
+
+  if (P === 0) {
+    return enClauses.map(() => '');
+  }
+
   if (P <= M) {
-    return enClauses.map(() => trimmedPt);
+    // Menos (ou igual) palavras em PT do que cláusulas em EN. Repetir a frase
+    // inteira em cada passo era enganoso; distribui 1:1 e, quando falta, usa os
+    // pesos das cláusulas inglesas (as maiores ficam com o texto).
+    if (P === M) {
+      return ptTokens.map(token => token);
+    }
+
+    const enWordCounts = enClauses.map(c => Math.max(1, c.split(/\s+/).filter(Boolean).length));
+    const totalWords = enWordCounts.reduce((a, b) => a + b, 0) || 1;
+    const exact = enWordCounts.map(count => (count / totalWords) * P);
+    const counts = exact.map(value => Math.floor(value));
+    let remainder = P - counts.reduce((a, b) => a + b, 0);
+    const byRemainder = exact
+      .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+      .sort((a, b) => b.fraction - a.fraction);
+    for (let i = 0; i < byRemainder.length && remainder > 0; i += 1, remainder -= 1) {
+      counts[byRemainder[i].index] += 1;
+    }
+
+    const distributed: string[] = [];
+    let cursor = 0;
+    for (let i = 0; i < M; i += 1) {
+      distributed.push(ptTokens.slice(cursor, cursor + counts[i]).join(' '));
+      cursor += counts[i];
+    }
+    return distributed;
   }
 
   const ptNorms = ptTokens.map(t => normalizePtWord(t));
@@ -1982,7 +2162,7 @@ export function alignPortugueseClauses(enClauses: string[], fullPt: string): str
       const roots = wordsRoots[wIdx];
       if (roots.length === 0) continue;
       const cleanEn = cleanString(enTokens[wIdx]);
-      const isContentWord = cleanEn.length >= 4 || !EN_NON_FINAL_WORDS.has(cleanEn);
+      const isContentWord = !EN_NON_FINAL_WORDS.has(cleanEn) && cleanEn.length >= 3;
       const weight = isContentWord ? 9 : 3;
 
       const matchedInSeg = segPtNorms.some(ptN => doesPtTokenMatchRoots(ptN, roots));
@@ -2635,7 +2815,10 @@ export function calculateSrsNextReview(
 
 export function isVocabDueForReview(item: VocabItem, now: Date = new Date()): boolean {
   if (!item.nextReviewDate) return true;
-  return new Date(item.nextReviewDate).getTime() <= now.getTime();
+  const dueAt = new Date(item.nextReviewDate).getTime();
+  // Invalid date (corrupted/imported data) should resurface, not be hidden forever.
+  if (!Number.isFinite(dueAt)) return true;
+  return dueAt <= now.getTime();
 }
 
 export type HandsFreeVoiceCommand = 'skip' | 'repeat' | 'pause' | null;
@@ -2732,22 +2915,10 @@ export function detectHandsFreeVoiceCommand(
 }
 
 /**
- * Computes the effective maximum attempts before Hands-Free mode automatically advances
- * to the next step in the cycle. When in 'speak_blind_en' with blindMaxErrorsBeforeReveal > 0,
- * guarantees at least 1 additional attempt AFTER the English text is revealed so the user
- * can read the revealed text before advancing.
+ * Reexported from `blindAttempts.ts` (single source of truth shared with the
+ * Voice Hub feedback planner and the post-sentence challenge modal).
  */
-export function getHandsFreeEffectiveMaxAttempts(
-  stepCard: string,
-  handsFreeMaxAttempts = 2,
-  blindMaxErrorsBeforeReveal = 2
-): number {
-  const baseMax = Math.max(1, handsFreeMaxAttempts || 2);
-  if (stepCard === 'speak_blind_en' && blindMaxErrorsBeforeReveal > 0) {
-    return Math.max(baseMax, blindMaxErrorsBeforeReveal + 1);
-  }
-  return baseMax;
-}
+export { getHandsFreeEffectiveMaxAttempts } from './blindAttempts';
 
 /**
  * Generates an instant local phonetic coaching diagnostic for Brazilian learners

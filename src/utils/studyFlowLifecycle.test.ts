@@ -194,6 +194,25 @@ test('resolveStepChipClickBehavior continues training loop when clicked during a
   );
 });
 
+test('resolveStepChipClickBehavior guards NaN clicked indexes instead of storing NaN in resume state', () => {
+  assert.deepEqual(
+    resolveStepChipClickBehavior({
+      isPlayingLoop: false,
+      pausedResumeSeqIdx: 2,
+      clickedSeqIdx: Number.NaN
+    }),
+    { mode: 'execute_single_step', nextPausedResumeSeqIdx: 0 }
+  );
+  assert.deepEqual(
+    resolveStepChipClickBehavior({
+      isPlayingLoop: false,
+      pausedResumeSeqIdx: 2,
+      clickedSeqIdx: -4
+    }),
+    { mode: 'execute_single_step', nextPausedResumeSeqIdx: 0 }
+  );
+});
+
 test('resolveLoopButtonMode transitions between Iniciar Treino, Pausar Treino, and Continuar Treino', () => {
   assert.equal(resolveLoopButtonMode({ isPlayingLoop: false, pausedResumeSeqIdx: null }), 'start');
   assert.equal(resolveLoopButtonMode({ isPlayingLoop: true, pausedResumeSeqIdx: null }), 'pause');

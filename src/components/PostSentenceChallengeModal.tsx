@@ -21,6 +21,7 @@ import {
   EXTRA_DISTRACTOR_POOL
 } from '../utils/matchingPairs';
 import { HandsFreeChallengeMode } from '../types/shadowreader';
+import { getHandsFreeEffectiveMaxAttempts } from '../utils/blindAttempts';
 
 export interface ChallengeWordItem {
   id: string;
@@ -480,7 +481,7 @@ export const PostSentenceChallengeModal: React.FC<PostSentenceChallengeModalProp
       if (!isAlive()) return;
     }
 
-    const maxAtt = Math.max(1, handsFreeMaxAttempts || 2);
+    const maxAtt = getHandsFreeEffectiveMaxAttempts('speak_challenge', handsFreeMaxAttempts);
     let attempt = Math.max(0, Math.min(options.startAttempt ?? 0, maxAtt - 1));
 
     while (attempt < maxAtt && isAlive()) {
@@ -646,7 +647,7 @@ export const PostSentenceChallengeModal: React.FC<PostSentenceChallengeModalProp
       await speakPtHelper(nextUnmatchedPt.pt);
       if (!isAlive()) return;
 
-      const maxAtt = Math.max(1, handsFreeMaxAttempts || 2);
+      const maxAtt = getHandsFreeEffectiveMaxAttempts('speak_challenge', handsFreeMaxAttempts);
       let attempt = 0;
       let pairResolved = false;
 
@@ -838,7 +839,7 @@ export const PostSentenceChallengeModal: React.FC<PostSentenceChallengeModalProp
       cancelChallengeAudioAndTimers();
       const token = pronHandsFreeTokenRef.current;
       setPronFeedback({ status: 'idle', spoken: '' });
-      const maxAtt = Math.max(1, handsFreeMaxAttempts || 2);
+      const maxAtt = getHandsFreeEffectiveMaxAttempts('speak_challenge', handsFreeMaxAttempts);
       await runPronunciationHandsFreeFlow(activePronWord, token, {
         skipIntro: true,
         startAttempt: Math.min(wordFailuresRef.current, maxAtt - 1)

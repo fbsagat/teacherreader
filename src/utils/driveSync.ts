@@ -6,6 +6,7 @@ import {
   StudyStats,
   VocabItem
 } from '../types/shadowreader';
+import { normalizeSettings } from './settingsNormalizer';
 
 export const DRIVE_SYNC_FILENAME = 'teacher-reader-sync-v1.json';
 export const DRIVE_SYNC_MIME_TYPE = 'application/json';
@@ -137,8 +138,22 @@ export function parseDriveBackupSnapshot(raw: unknown): DriveBackupSnapshot | nu
     books,
     vocab,
     stats,
-    settings: obj.settings as PedagogicalSettings
+    settings: normalizeSettings(obj.settings)
   };
+}
+
+function canonicalizeJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value) ?? 'null';
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(item => canonicalizeJson(item)).join(',')}]`;
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  return `{${keys
+    .map(key => `${JSON.stringify(key)}:${canonicalizeJson(record[key])}`)
+    .join(',')}}`;
 }
 
 /**
@@ -189,7 +204,9 @@ export function computeSnapshotFingerprint(snapshot: DriveBackupSnapshot): strin
     books: normalizedBooks,
     vocab: normalizedVocab,
     stats: normalizedStats,
-    settings: snapshot.settings
+    // Key order must not matter: two devices with identical settings would
+    // otherwise keep disagreeing and reopening the merge confirmation forever.
+    settings: canonicalizeJson(snapshot.settings)
   });
 
   // Fast FNV-1a 64-bit-like hex digest (two 32-bit lanes)
@@ -366,6 +383,9 @@ export function mergeDriveSnapshots(
   const dailyHistory: Record<string, DailyStatEntry> = {
     ...(local.stats.dailyHistory || {})
   };
+  // Política explícita: max-wins por dia. O snapshot não guarda deltas por
+  // aparelho/sessão, então somar inventaria progresso que ninguém fez; o maior
+  // valor conhecido evita regressão ao mesclar dois aparelhos no mesmo dia.
   for (const [dateKey, rEntry] of Object.entries(remote.stats.dailyHistory || {})) {
     const lEntry = dailyHistory[dateKey];
     if (!lEntry) {
@@ -400,9 +420,14 @@ export function mergeDriveSnapshots(
     dailyHistory
   };
 
+  const mergedUpdatedAtMs = Math.max(localTime, remoteTime);
   return {
     version: 1,
-    updatedAt: new Date(Math.max(localTime, remoteTime, Date.now())).toISOString(),
+    // Determinístico: o bump para "agora" acontece no ponto de escrita/envio,
+    // não na mescla (antes, cada chamada gerava um snapshot diferente).
+    updatedAt: mergedUpdatedAtMs > 0
+      ? new Date(mergedUpdatedAtMs).toISOString()
+      : local.updatedAt || remote.updatedAt || new Date(0).toISOString(),
     deviceLabel: local.deviceLabel || remote.deviceLabel,
     activeBookId: remoteIsNewer
       ? remote.activeBookId || local.activeBookId

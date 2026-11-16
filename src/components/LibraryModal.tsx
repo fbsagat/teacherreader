@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { SAMPLE_BOOKS } from '../data/dictionaryDb';
 import { Book, BookLengthCategory, CefrLevel } from '../types/shadowreader';
 import {
@@ -45,6 +45,15 @@ const LEVEL_BADGE_STYLES: Record<CefrLevel, string> = {
   C1: 'bg-rose-500/20 text-rose-300 border-rose-500/40'
 };
 
+/** Collision-free book id (Date.now() collided when two imports happened quickly). */
+function createBookId(prefix: string): string {
+  const uuid =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  return `${prefix}_${uuid}`;
+}
+
 export const LibraryModal: React.FC<LibraryModalProps> = ({
   isOpen,
   currentBookId,
@@ -65,6 +74,21 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
   const [selectedLevel, setSelectedLevel] = useState<'ALL' | CefrLevel>('ALL');
   const [selectedLength, setSelectedLength] = useState<'ALL' | BookLengthCategory>('ALL');
 
+  // Always reopen in a clean state (stale tab/filters/errors and a stale file
+  // input made "upload the same file again" silently do nothing).
+  useEffect(() => {
+    if (!isOpen) return;
+    setActiveTab('catalog');
+    setPdfLoadingText(null);
+    setIsDragging(false);
+    setCustomTitle('');
+    setCustomText('');
+    setCustomError('');
+    setSelectedLevel('ALL');
+    setSelectedLength('ALL');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const filteredSampleBooks = SAMPLE_BOOKS.filter(b => {
@@ -81,6 +105,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
     SAMPLE_BOOKS.find(b => b.id === currentBookId);
 
   const handleStudyFileUpload = async (file: File) => {
+    if (fileInputRef.current) fileInputRef.current.value = '';
     setPdfLoadingText(`Carregando "${file.name}"...`);
     try {
       const parsedResult = await parseUploadedStudyFile(file, status => {
@@ -88,7 +113,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
       });
 
       const newBook: Book = {
-        id: 'book_' + Date.now(),
+        id: createBookId('book'),
         title: parsedResult.title,
         author: parsedResult.author,
         sentences: parsedResult.sentences,
@@ -121,7 +146,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
     }
     setCustomError('');
     const newBook: Book = {
-      id: 'custom_' + Date.now(),
+      id: createBookId('custom'),
       title: titleTrim,
       author: 'Texto Personalizado',
       sentences: parsed,

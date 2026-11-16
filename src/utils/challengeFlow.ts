@@ -66,20 +66,23 @@ export function evaluateWordPronunciation(
   }
 
   const cleanTarget = cleanString(targetWord);
-  const cleanSpoken = cleanString(trimmedRaw);
   const spokenTokens = cleanSpeech(trimmedRaw).split(/\s+/).filter(Boolean);
   const { score } = calculateSimilarity(targetWord, trimmedRaw);
 
+  // Only accept a real correspondence: an actual phonetic match for one of the
+  // spoken tokens (whole tokens only — "includes" approved "he" for "the").
   const passed =
     score >= 70 ||
-    (Boolean(cleanTarget) && cleanSpoken === cleanTarget) ||
-    (Boolean(cleanTarget) && cleanSpoken.includes(cleanTarget)) ||
-    isWordMatch(targetWord, cleanSpoken) ||
-    spokenTokens.some(tok => isWordMatch(targetWord, tok));
+    spokenTokens.some(tok => {
+      const cleanTok = cleanString(tok);
+      return Boolean(cleanTok) && Boolean(cleanTarget) && (cleanTok === cleanTarget || isWordMatch(targetWord, cleanTok));
+    });
 
   return {
     trimmedRaw,
     passed,
-    score: passed ? Math.max(score, 92) : score
+    // No artificial floor: the engine must see the real similarity so the
+    // configured threshold decides.
+    score
   };
 }

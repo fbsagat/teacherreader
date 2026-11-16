@@ -28,6 +28,14 @@ export const SentenceNavigatorModal: React.FC<SentenceNavigatorModalProps> = ({
   const [cefrFilter, setCefrFilter] = useState<'all' | 'A1-A2' | 'B1-B2' | 'C1'>('all');
   const [visibleLimit, setVisibleLimit] = useState<number>(NAV_BATCH_SIZE);
 
+  // Fresh search/filters on every open (stale values made sentences look missing).
+  useEffect(() => {
+    if (!isOpen) return;
+    setSearchQuery('');
+    setStatusFilter('all');
+    setCefrFilter('all');
+  }, [isOpen]);
+
   // Ensure current sentence is within the initial visible window when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -216,7 +224,7 @@ export const SentenceNavigatorModal: React.FC<SentenceNavigatorModalProps> = ({
         {/* Sentence List (Staged / Batched for Large Books) */}
         <div className="mt-3 flex-1 overflow-y-auto space-y-2 pr-1" id="sentenceNavigatorList">
           {filteredSentences.length === 0 ? (
-            <p className="text-xs text-slate-500 text-center py-8">
+            <p className="text-xs text-slate-400 text-center py-8">
               Nenhuma sentença encontrada para o filtro selecionado.
             </p>
           ) : (

@@ -123,7 +123,8 @@ export function resolveStepChipClickBehavior(input: {
   pausedResumeSeqIdx: number | null;
   clickedSeqIdx: number;
 }): StepChipClickDecision {
-  const safeSeqIdx = Math.max(0, Math.floor(input.clickedSeqIdx));
+  const rawSeqIdx = Number(input.clickedSeqIdx);
+  const safeSeqIdx = Number.isFinite(rawSeqIdx) ? Math.max(0, Math.floor(rawSeqIdx)) : 0;
   if (input.isPlayingLoop) {
     return {
       mode: 'jump_in_active_loop',

@@ -107,7 +107,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           onClick={onCycleTheme}
           aria-label={`Alternar tema de leitura (Atual: ${currentTheme.full})`}
           title={`Tema atual: ${currentTheme.full} (Clique para alternar entre os 6 temas)`}
-          className="min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 px-1.5 sm:px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-sm sm:text-[11px] font-semibold text-slate-200 border border-slate-700/80 transition whitespace-nowrap shrink-0 cursor-pointer flex items-center justify-center gap-1"
+          className="min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 px-1.5 sm:px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-sm sm:text-[11px] font-semibold text-slate-200 border border-slate-700/80 transition whitespace-nowrap shrink-0 cursor-pointer flex items-center justify-center gap-1"
         >
           <span aria-hidden="true">{currentTheme.icon}</span>
           <span className="hidden sm:inline">{currentTheme.name}</span>
@@ -128,7 +128,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                   ? 'Google Drive: Clique para confirmar ou reconectar'
                   : 'Conectar Google Drive para backup automático invisível'
           }
-          className="min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 p-1.5 sm:p-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-sky-300 relative transition shrink-0 cursor-pointer flex items-center justify-center"
+          className="min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 p-1.5 sm:p-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-sky-300 relative transition shrink-0 cursor-pointer flex items-center justify-center"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -160,7 +160,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           onClick={onOpenStats}
           aria-label="Progresso e Estatísticas"
           title="Progresso, Metas Diárias e Domínio Lexical"
-          className="min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 p-1.5 sm:p-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-emerald-400 transition shrink-0 cursor-pointer flex items-center justify-center"
+          className="min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 p-1.5 sm:p-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-emerald-400 transition shrink-0 cursor-pointer flex items-center justify-center"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -179,7 +179,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           onClick={onOpenLibrary}
           aria-label="Biblioteca e Importação de Livros"
           title="Biblioteca / Importar Arquivo (PDF, EPUB, DOCX, TXT, MD, SRT, HTML, CSV, JSON)"
-          className="min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 p-1.5 sm:p-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 transition shrink-0 cursor-pointer flex items-center justify-center"
+          className="min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 p-1.5 sm:p-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 transition shrink-0 cursor-pointer flex items-center justify-center"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -202,7 +202,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               ? `Caderno de Palavras (${dueSrsCount} para revisar hoje no SRS)`
               : 'Caderno de Palavras Salvas'
           }
-          className="min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 p-1.5 sm:p-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 relative transition shrink-0 cursor-pointer flex items-center justify-center"
+          className="min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 p-1.5 sm:p-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 relative transition shrink-0 cursor-pointer flex items-center justify-center"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -229,7 +229,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           onClick={onOpenSettings}
           aria-label="Configurações Pedagógicas"
           title="Configurações Pedagógicas"
-          className="min-w-[34px] min-h-[34px] sm:min-w-0 sm:min-h-0 p-1.5 sm:p-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 transition shrink-0 cursor-pointer flex items-center justify-center"
+          className="min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 p-1.5 sm:p-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 transition shrink-0 cursor-pointer flex items-center justify-center"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path

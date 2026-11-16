@@ -37,6 +37,15 @@ export function prepareSpeechTextForTts(rawText: string): string {
   return cleaned;
 }
 
+function hardSplitLongChunk(chunk: string, maxChars: number): string[] {
+  if (chunk.length <= maxChars) return [chunk];
+  const parts: string[] = [];
+  for (let i = 0; i < chunk.length; i += maxChars) {
+    parts.push(chunk.slice(i, i + maxChars));
+  }
+  return parts;
+}
+
 function splitLongSegmentByWordBounds(segment: string, maxChars: number): string[] {
   const trimmed = segment.trim();
   if (!trimmed) return [];
@@ -62,7 +71,9 @@ function splitLongSegmentByWordBounds(segment: string, maxChars: number): string
   if (current) {
     chunks.push(current);
   }
-  return chunks;
+  // A single token longer than the limit (URL, code, no spaces) still has to be
+  // split, otherwise the TTS engine truncates it anyway.
+  return chunks.flatMap(chunk => hardSplitLongChunk(chunk, maxChars));
 }
 
 const SOFT_BREAK_WORDS = new Set([
@@ -172,7 +183,10 @@ export function splitTextIntoTtsChunks(
   const prepared = prepareSpeechTextForTts(rawText);
   if (!prepared) return [];
 
-  const limit = Math.max(40, Math.floor(maxChunkChars));
+  const safeMaxChars = Number.isFinite(maxChunkChars)
+    ? Math.floor(maxChunkChars)
+    : DEFAULT_MAX_CHUNK_CHARS;
+  const limit = Math.max(40, safeMaxChars);
   if (prepared.length <= limit) return [prepared];
 
   // Step 1: Split on sentence boundaries (. ! ? ; :) keeping punctuation with preceding unit
@@ -332,8 +346,12 @@ function findWavDataChunkBounds(wavBytes: Uint8Array): { dataStart: number; data
 /**
  * Concatenates multiple PCM WAV base64 clips (e.g., Gemini 3.8 TTS unary output)
  * into a single valid RIFF/WAV file with updated ChunkSize and Subchunk2Size headers.
+ *
+ * Returns `null` when any clip is not a valid RIFF/WAV payload: serving only the
+ * first clip (or blindly skipping bytes) would mark partial audio as complete and
+ * silently cut the sentence. Callers should fall back to another provider instead.
  */
-export function concatenateWavBase64(base64Chunks: string[]): string {
+export function concatenateWavBase64(base64Chunks: string[]): string | null {
   const valid = base64Chunks.filter(c => typeof c === 'string' && c.length > 0);
   if (valid.length === 0) return '';
   if (valid.length === 1) return valid[0];
@@ -341,7 +359,7 @@ export function concatenateWavBase64(base64Chunks: string[]): string {
   const decoded = valid.map(decodeBase64ToBytes);
   const firstBounds = findWavDataChunkBounds(decoded[0]);
   if (!firstBounds) {
-    return valid[0];
+    return null;
   }
 
   const header = new Uint8Array(decoded[0].subarray(0, firstBounds.dataStart));
@@ -351,11 +369,10 @@ export function concatenateWavBase64(base64Chunks: string[]): string {
 
   for (let i = 1; i < decoded.length; i++) {
     const bounds = findWavDataChunkBounds(decoded[i]);
-    if (bounds) {
-      pcmParts.push(decoded[i].subarray(bounds.dataStart, bounds.dataStart + bounds.dataLength));
-    } else if (decoded[i].length > 44) {
-      pcmParts.push(decoded[i].subarray(44));
+    if (!bounds) {
+      return null;
     }
+    pcmParts.push(decoded[i].subarray(bounds.dataStart, bounds.dataStart + bounds.dataLength));
   }
 
   const totalPcmBytes = pcmParts.reduce((sum, p) => sum + p.length, 0);

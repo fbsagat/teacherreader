@@ -217,9 +217,11 @@ export default function App() {
   >(null);
 
   // Real-time Microphone Spectrum Level & Recorded User Voice Blob
-  const [micVolumeLevel, setMicVolumeLevel] = useState<number>(0);
   const [lastUserAudioUrl, setLastUserAudioUrl] = useState<string | null>(null);
   const [isPlayingUserAudio, setIsPlayingUserAudio] = useState<boolean>(false);
+  // Level meter is written straight to the DOM from the analyser interval:
+  // feeding it through React state re-rendered the whole App at ~11 Hz.
+  const micLevelBarRef = useRef<HTMLDivElement | null>(null);
 
   // Challenge Mode, Blind Speaking Stage & Evaluation Feedback State
   const [challengeUnlocked, setChallengeUnlocked] = useState<boolean>(false);
@@ -317,6 +319,12 @@ export default function App() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const analyserIntervalRef = useRef<number | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const analyserNodeRef = useRef<AnalyserNode | null>(null);
+  const captureGenerationRef = useRef<number>(0);
+  const pendingChallengeResolveRef = useRef<((outcome: ChallengeOutcome) => void) | null>(null);
+  const isSessionRestoredRef = useRef<boolean>(false);
   const userAudioPlaybackRef = useRef<HTMLAudioElement | null>(null);
   const isStepByStepModeRef = useRef<boolean>(isStepByStepMode);
   const activeStepIdxRef = useRef<number>(activeStepIdx);
@@ -340,6 +348,12 @@ export default function App() {
   const driveAutoSyncTimerRef = useRef<number | null>(null);
   const isApplyingDriveRestoreRef = useRef<boolean>(false);
   const driveRemoteFileIdRef = useRef<string | null>(null);
+  const reconcileWithGoogleDriveRef = useRef<
+    ((accessToken: string, userInitiated?: boolean) => Promise<void>) | null
+  >(null);
+  const sentenceProgressRef = useRef<Record<number, SentenceProgress>>(sentenceProgress);
+  const studyStatsRef = useRef<StudyStats>(studyStats);
+  const savedVocabRef = useRef<VocabItem[]>(savedVocab);
 
   useEffect(() => {
     activeSequenceStepIdxRef.current = activeSequenceStepIdx;
@@ -347,8 +361,14 @@ export default function App() {
 
   useEffect(() => {
     sentencesRef.current = sentences;
-    setExtraLoadedStagesCount(0);
   }, [sentences]);
+
+  // O prefetch do Modo Página traduz e colapsa a paginação, recriando `sentences`.
+  // Zerar as etapas extras a cada mudança apagava as páginas já carregadas; o
+  // contador só deve voltar ao início quando o livro muda.
+  useEffect(() => {
+    setExtraLoadedStagesCount(0);
+  }, [currentBookId]);
 
   useEffect(() => {
     currentIndexRef.current = currentIndex;
@@ -376,6 +396,20 @@ export default function App() {
     document.documentElement.style.setProperty('--app-font-scale', (scale / 100).toFixed(2));
     document.documentElement.dataset.fontScale = String(scale);
   }, [settings]);
+
+  // Mirror refs so async handlers can compute the next value outside setState
+  // updaters (no storage writes inside an updater).
+  useEffect(() => {
+    sentenceProgressRef.current = sentenceProgress;
+  }, [sentenceProgress]);
+
+  useEffect(() => {
+    studyStatsRef.current = studyStats;
+  }, [studyStats]);
+
+  useEffect(() => {
+    savedVocabRef.current = savedVocab;
+  }, [savedVocab]);
 
   useEffect(() => {
     streakRef.current = streak;
@@ -828,13 +862,19 @@ export default function App() {
     }
   }, [handleDriveApiError, showToast]);
 
+  // Keep the latest reconcile implementation reachable from the auth listener
+  // without making the listener re-subscribe on every sentence/settings change.
+  useEffect(() => {
+    reconcileWithGoogleDriveRef.current = reconcileWithGoogleDrive;
+  }, [reconcileWithGoogleDrive]);
+
   // Monitor Firebase Auth state cleanly (in-memory token only)
   useEffect(() => {
     const unsubscribe = initDriveAuth(
       (user, accessToken) => {
         setDriveUser(user);
         setHasDriveToken(true);
-        reconcileWithGoogleDrive(accessToken, false);
+        void reconcileWithGoogleDriveRef.current?.(accessToken, false);
       },
       signedInWithoutToken => {
         driveAutoSyncArmedRef.current = false;
@@ -849,7 +889,7 @@ export default function App() {
       }
     );
     return unsubscribe;
-  }, [reconcileWithGoogleDrive]);
+  }, []);
 
   // Update local summary whenever modal opens
   useEffect(() => {
@@ -935,49 +975,48 @@ export default function App() {
   // Initial load: Restore active book session and check mic permission
   useEffect(() => {
     refreshSavedBooksList();
-    let switchedToMasterpiece = false;
-    try {
-      if (!localStorage.getItem('sr_masterpiece_beacon_v1')) {
-        localStorage.setItem('sr_masterpiece_beacon_v1', '1');
-        switchedToMasterpiece = true;
-      }
-    } catch {
-      // ignore storage errors
-    }
+    let cancelled = false;
+    isSessionRestoredRef.current = false;
 
-    ShadowRepository.books.getActive().then(book => {
-      if (switchedToMasterpiece) {
+    ShadowRepository.books
+      .getActive()
+      .then(book => {
+        if (cancelled) return;
+        if (book && book.sentences && book.sentences.length > 0) {
+          const sampleMatch = SAMPLE_BOOKS.find(sb => sb.id === book.id);
+          const mergedSentences = sampleMatch
+            ? book.sentences.map((s, idx) => ({
+                ...sampleMatch.sentences[idx],
+                ...s,
+                cefrLevel: s.cefrLevel || sampleMatch.sentences[idx]?.cefrLevel,
+                actTitle: s.actTitle || sampleMatch.sentences[idx]?.actTitle,
+                grammarRule: s.grammarRule || sampleMatch.sentences[idx]?.grammarRule
+              }))
+            : book.sentences;
+          const validIdx = Math.max(
+            0,
+            Math.min(book.currentIndex || 0, mergedSentences.length - 1)
+          );
+          setCurrentBookId(book.id);
+          setCurrentBookTitle(sampleMatch ? sampleMatch.title : book.title);
+          setSentences(mergedSentences);
+          setCurrentIndex(validIdx);
+          setSentenceProgress(book.sentenceProgress || {});
+          return;
+        }
+
+        // Only fall back to the demo book when there is really no active book.
         const masterBook = SAMPLE_BOOKS[0];
         setCurrentBookId(masterBook.id);
         setCurrentBookTitle(masterBook.title);
         setSentences([...masterBook.sentences]);
         setCurrentIndex(0);
         setSentenceProgress({});
-        return;
-      }
-
-      if (book && book.sentences && book.sentences.length > 0) {
-        const sampleMatch = SAMPLE_BOOKS.find(sb => sb.id === book.id);
-        const mergedSentences = sampleMatch
-          ? book.sentences.map((s, idx) => ({
-              ...sampleMatch.sentences[idx],
-              ...s,
-              cefrLevel: s.cefrLevel || sampleMatch.sentences[idx]?.cefrLevel,
-              actTitle: s.actTitle || sampleMatch.sentences[idx]?.actTitle,
-              grammarRule: s.grammarRule || sampleMatch.sentences[idx]?.grammarRule
-            }))
-          : book.sentences;
-        const validIdx = Math.max(
-          0,
-          Math.min(book.currentIndex || 0, mergedSentences.length - 1)
-        );
-        setCurrentBookId(book.id);
-        setCurrentBookTitle(sampleMatch ? sampleMatch.title : book.title);
-        setSentences(mergedSentences);
-        setCurrentIndex(validIdx);
-        setSentenceProgress(book.sentenceProgress || {});
-      }
-    });
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) isSessionRestoredRef.current = true;
+      });
 
     if (navigator.permissions && navigator.permissions.query) {
       navigator.permissions
@@ -990,6 +1029,10 @@ export default function App() {
         })
         .catch(() => {});
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [refreshSavedBooksList]);
 
   const currentSentence = sentences[currentIndex] || sentences[0];
@@ -998,11 +1041,15 @@ export default function App() {
   useEffect(() => {
     if (!currentSentence) return;
 
-    setBookmarkSaving(true);
-    ShadowRepository.books.updateBookmark(currentBookId, currentIndex).then(() => {
-      setBookmarkSaving(false);
-      refreshSavedBooksList();
-    });
+    // Do not write a bookmark with the demo book before the session restore
+    // finishes: it used to poison sr_active_book_id on every reload.
+    if (isSessionRestoredRef.current) {
+      setBookmarkSaving(true);
+      ShadowRepository.books.updateBookmark(currentBookId, currentIndex).then(() => {
+        setBookmarkSaving(false);
+        refreshSavedBooksList();
+      });
+    }
 
     if (!currentSentence.pt || currentSentence.pt.startsWith('[Tradução')) {
       setTranslatingSentence(true);
@@ -1102,35 +1149,35 @@ export default function App() {
 
   // Update settings helper
   const handleUpdateSettings = useCallback((partial: Partial<PedagogicalSettings>) => {
-    setSettings(prev => {
-      const updated = { ...prev, ...partial };
-      settingsRef.current = updated;
-      ShadowRepository.settings.save(updated);
-      if (partial.audioFlow !== undefined || partial.cardSequence !== undefined) {
-        setChallengeUnlocked(false);
-        setBlindEnglishUnlocked(false);
+    // Compute outside the setState updater: React may call an updater more than
+    // once, and persisting/DOM work inside it caused duplicated writes.
+    const updated = { ...settingsRef.current, ...partial };
+    settingsRef.current = updated;
+    setSettings(updated);
+    ShadowRepository.settings.save(updated);
+    if (partial.audioFlow !== undefined || partial.cardSequence !== undefined) {
+      setChallengeUnlocked(false);
+      setBlindEnglishUnlocked(false);
+      isBlindStageActiveRef.current = false;
+      setIsBlindStageActive(false);
+      blindErrorCountRef.current = 0;
+      setBlindErrorCount(0);
+      manualSpeakStageIdxRef.current = 0;
+      pausedResumeSeqIdxRef.current = null;
+      setPausedResumeSeqIdx(null);
+      setLastScore(null);
+      setWordResults([]);
+    }
+    if (partial.enableBlindSpeakingStage !== undefined) {
+      manualSpeakStageIdxRef.current = 0;
+      if (!partial.enableBlindSpeakingStage) {
         isBlindStageActiveRef.current = false;
         setIsBlindStageActive(false);
-        blindErrorCountRef.current = 0;
-        setBlindErrorCount(0);
-        manualSpeakStageIdxRef.current = 0;
-        pausedResumeSeqIdxRef.current = null;
-        setPausedResumeSeqIdx(null);
+      } else {
         setLastScore(null);
         setWordResults([]);
       }
-      if (partial.enableBlindSpeakingStage !== undefined) {
-        manualSpeakStageIdxRef.current = 0;
-        if (!partial.enableBlindSpeakingStage) {
-          isBlindStageActiveRef.current = false;
-          setIsBlindStageActive(false);
-        } else {
-          setLastScore(null);
-          setWordResults([]);
-        }
-      }
-      return updated;
-    });
+    }
   }, []);
 
   // Cycle Reading Theme (6 Themes: Escuro -> Claro -> Sépia -> Floresta -> Oceano -> Ametista)
@@ -1150,13 +1197,18 @@ export default function App() {
     showToast(labels[nextTheme]);
   }, [handleUpdateSettings, settings.themeMode, showToast]);
 
-  // Stop MediaRecorder & Audio Spectrum Analyser
+  // Stop MediaRecorder, Audio Spectrum Analyser and release the AudioContext.
+  // Bumping the capture generation invalidates any getUserMedia() permission
+  // prompt that is still pending, so a late grant can never leave the mic on.
   const stopVoiceRecordingAndAnalyser = useCallback(() => {
+    captureGenerationRef.current += 1;
     if (analyserIntervalRef.current) {
       window.clearInterval(analyserIntervalRef.current);
       analyserIntervalRef.current = null;
     }
-    setMicVolumeLevel(0);
+    if (micLevelBarRef.current) {
+      micLevelBarRef.current.style.width = '18%';
+    }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try {
         mediaRecorderRef.current.stop();
@@ -1164,15 +1216,36 @@ export default function App() {
         // ignore
       }
     }
+    mediaRecorderRef.current = null;
     if (micStreamRef.current) {
       micStreamRef.current.getTracks().forEach(t => t.stop());
       micStreamRef.current = null;
+    }
+    try {
+      analyserSourceRef.current?.disconnect();
+    } catch {
+      // ignore
+    }
+    try {
+      analyserNodeRef.current?.disconnect();
+    } catch {
+      // ignore
+    }
+    analyserSourceRef.current = null;
+    analyserNodeRef.current = null;
+    const ctx = audioCtxRef.current;
+    audioCtxRef.current = null;
+    if (ctx && ctx.state !== 'closed') {
+      void ctx.close().catch(() => {});
     }
   }, []);
 
   // Start capturing user's voice with MediaRecorder + Web Audio AnalyserNode
   const startVoiceRecordingAndAnalyser = useCallback(async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+    // Never stack captures: release any previous stream/recorder first.
+    stopVoiceRecordingAndAnalyser();
+    const generation = captureGenerationRef.current;
     try {
       const useNoiseFilter = settingsRef.current.micNoiseSuppression ?? true;
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -1182,6 +1255,14 @@ export default function App() {
           autoGainControl: useNoiseFilter
         }
       });
+
+      // The capture may have been stopped/navigated away while the permission
+      // prompt was open: drop the stream instead of assigning it.
+      if (generation !== captureGenerationRef.current) {
+        stream.getTracks().forEach(t => t.stop());
+        return;
+      }
+
       micStreamRef.current = stream;
 
       // 1. Web Audio AnalyserNode for real-time volume meter
@@ -1190,15 +1271,23 @@ export default function App() {
         (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {
         const ctx = new AudioCtx();
+        audioCtxRef.current = ctx;
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 64;
         source.connect(analyser);
+        analyserSourceRef.current = source;
+        analyserNodeRef.current = analyser;
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
         analyserIntervalRef.current = window.setInterval(() => {
           analyser.getByteFrequencyData(dataArray);
           const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-          setMicVolumeLevel(Math.min(100, Math.round((avg / 128) * 100)));
+          const level = Math.min(100, Math.round((avg / 128) * 100));
+          // Direct DOM write (no React state) keeps the App from re-rendering
+          // on every 90 ms sample.
+          if (micLevelBarRef.current) {
+            micLevelBarRef.current.style.width = `${Math.max(18, level)}%`;
+          }
         }, 90);
       }
 
@@ -1226,7 +1315,7 @@ export default function App() {
     } catch {
       // ignore if stream unavailable in sandbox
     }
-  }, []);
+  }, [stopVoiceRecordingAndAnalyser]);
 
   // Microphone permission request
   const requestMicrophonePermission = useCallback(
@@ -1908,35 +1997,36 @@ export default function App() {
       setStreak(nextStreak);
 
       // Update per-sentence progress (only mark sentence completed when the final full-sentence speaking step passes)
-      setSentenceProgress(prev => {
-        const existing = prev[sentenceIdx];
-        const updatedProg: SentenceProgress = {
-          completed: Boolean(existing?.completed || sentenceCompleted),
-          bestScore: Math.max(existing?.bestScore || 0, score),
-          attempts: (existing?.attempts || 0) + 1,
-          lastPracticed: new Date().toISOString()
-        };
-        ShadowRepository.books.updateBookmark(currentBookId, sentenceIdx, {
-          index: sentenceIdx,
-          progress: updatedProg
-        });
-        return {
-          ...prev,
-          [sentenceIdx]: updatedProg
-        };
+      const existing = sentenceProgressRef.current[sentenceIdx];
+      const updatedProg: SentenceProgress = {
+        completed: Boolean(existing?.completed || sentenceCompleted),
+        bestScore: Math.max(existing?.bestScore || 0, score),
+        attempts: (existing?.attempts || 0) + 1,
+        lastPracticed: new Date().toISOString()
+      };
+      const nextProgress = {
+        ...sentenceProgressRef.current,
+        [sentenceIdx]: updatedProg
+      };
+      sentenceProgressRef.current = nextProgress;
+      setSentenceProgress(nextProgress);
+      ShadowRepository.books.updateBookmark(currentBookId, sentenceIdx, {
+        index: sentenceIdx,
+        progress: updatedProg
       });
 
-      // Update global StudyStats
-      setStudyStats(prevStats =>
-        ShadowRepository.stats.recordEvaluation(
-          prevStats,
-          score,
-          passed,
-          nextStreak,
-          results,
-          sentenceCompleted
-        )
+      // Update global StudyStats (pure computation, then persist once)
+      const nextStats = ShadowRepository.stats.recordEvaluation(
+        studyStatsRef.current,
+        score,
+        passed,
+        nextStreak,
+        results,
+        sentenceCompleted
       );
+      studyStatsRef.current = nextStats;
+      setStudyStats(nextStats);
+      ShadowRepository.stats.save(nextStats);
     },
     [currentBookId]
   );
@@ -1979,24 +2069,33 @@ export default function App() {
         ...(sentenceWordMistakeCountsRef.current[sentenceIndex] || {})
       };
 
-      return new Promise(resolve => {
+      return new Promise<ChallengeOutcome>(resolve => {
+        let settled = false;
+        const settle = (outcome: ChallengeOutcome) => {
+          // Resolve at most once: Escape / onFinish / navigation can all race.
+          if (settled) return;
+          settled = true;
+          if (pendingChallengeResolveRef.current === settle) {
+            pendingChallengeResolveRef.current = null;
+          }
+          // Hard-stop any lingering challenge voices and mic capture immediately upon finishing, skipping, or closing
+          abortSpeechCaptureRef.current?.();
+          stopAllAudioPlayback();
+          setIsSpeakingTTS(false);
+          setPostSentenceChallengeRequest(null);
+          if (outcome === 'advance') {
+            completedChallengeIndicesRef.current.add(sentenceIndex);
+          }
+          resolve(outcome);
+        };
+        pendingChallengeResolveRef.current = settle;
         setPostSentenceChallengeRequest({
           sentenceEn,
           sentenceIndex,
           enablePronunciation,
           enableMatching,
           wordMistakes: mistakeSnapshot,
-          resolve: (outcome: ChallengeOutcome) => {
-            // Hard-stop any lingering challenge voices and mic capture immediately upon finishing, skipping, or closing
-            abortSpeechCaptureRef.current?.();
-            stopAllAudioPlayback();
-            setIsSpeakingTTS(false);
-            setPostSentenceChallengeRequest(null);
-            if (outcome === 'advance') {
-              completedChallengeIndicesRef.current.add(sentenceIndex);
-            }
-            resolve(outcome);
-          }
+          resolve: settle
         });
       });
     },
@@ -2150,6 +2249,8 @@ export default function App() {
       setActiveSequenceStepIdx(null);
       releaseWakeLockIfHeld();
       setEnginePhase('PAUSED');
+      // Never leave a suspended challenge promise with the old sentence closure.
+      pendingChallengeResolveRef.current?.('cancel');
       stopAllAudio();
       setStateBadgeText('Pausado');
       setStateBadgeColor('text-slate-300');
@@ -2165,6 +2266,7 @@ export default function App() {
       setIsPlayingLoop(false);
       setActiveSequenceStepIdx(null);
       releaseWakeLockIfHeld();
+      pendingChallengeResolveRef.current?.('cancel');
       stopAllAudio();
       setEnginePhase('IDLE');
       setStateBadgeText('Pronto');
@@ -2772,6 +2874,7 @@ export default function App() {
         setIsPlayingLoop(false);
         pausedResumeSeqIdxRef.current = null;
         setPausedResumeSeqIdx(null);
+        pendingChallengeResolveRef.current?.('cancel');
         setPostSentenceChallengeRequest(null);
         stopAllAudio();
 
@@ -3686,41 +3789,40 @@ export default function App() {
   const handleSaveVocabItem = useCallback(
     (word: string, formattedSentence: string) => {
       if (!word) return;
-      setSavedVocab(prev => {
-        const exists = prev.some(v => v.word.toLowerCase() === word.toLowerCase());
-        if (exists) {
-          showToast(`"${word}" já está no seu caderno.`);
-          return prev;
-        }
-        const next: VocabItem[] = [
-          {
-            word,
-            sentence: formattedSentence,
-            date: new Date().toLocaleDateString('pt-BR'),
-            interval: 0,
-            repetition: 0,
-            efactor: 2.5,
-            nextReviewDate: new Date().toISOString()
-          },
-          ...prev
-        ];
-        ShadowRepository.vocab.save(next);
-        showToast(`Palavra "${word}" salva no caderno com SRS!`);
-        return next;
-      });
+      const prev = savedVocabRef.current;
+      const exists = prev.some(v => v.word.toLowerCase() === word.toLowerCase());
+      if (exists) {
+        showToast(`"${word}" já está no seu caderno.`);
+        return;
+      }
+      const next: VocabItem[] = [
+        {
+          word,
+          sentence: formattedSentence,
+          date: new Date().toLocaleDateString('pt-BR'),
+          interval: 0,
+          repetition: 0,
+          efactor: 2.5,
+          nextReviewDate: new Date().toISOString()
+        },
+        ...prev
+      ];
+      savedVocabRef.current = next;
+      setSavedVocab(next);
+      ShadowRepository.vocab.save(next);
+      showToast(`Palavra "${word}" salva no caderno com SRS!`);
     },
     [showToast]
   );
 
   const handleRateSrsItem = useCallback(
     (word: string, quality: 2 | 4 | 5) => {
-      setSavedVocab(prev => {
-        const next = prev.map(item =>
-          item.word === word ? calculateSrsNextReview(item, quality) : item
-        );
-        ShadowRepository.vocab.save(next);
-        return next;
-      });
+      const next = savedVocabRef.current.map(item =>
+        item.word === word ? calculateSrsNextReview(item, quality) : item
+      );
+      savedVocabRef.current = next;
+      setSavedVocab(next);
+      ShadowRepository.vocab.save(next);
       const msgMap: Record<2 | 4 | 5, string> = {
         2: 'Marcado como Difícil: será revisado ainda hoje.',
         4: 'Bom! Próxima revisão agendada no SRS.',
@@ -3742,23 +3844,22 @@ export default function App() {
       efactor: 2.5,
       nextReviewDate: new Date().toISOString()
     };
-    setSavedVocab(prev => {
-      const next = [nextItem, ...prev];
-      ShadowRepository.vocab.save(next);
-      return next;
-    });
+    const next = [nextItem, ...savedVocabRef.current];
+    savedVocabRef.current = next;
+    setSavedVocab(next);
+    ShadowRepository.vocab.save(next);
     showToast('Frase salva com sucesso!');
   }, [currentSentence, showToast]);
 
   const handleDeleteVocabItem = useCallback((idx: number) => {
-    setSavedVocab(prev => {
-      const next = prev.filter((_, i) => i !== idx);
-      ShadowRepository.vocab.save(next);
-      return next;
-    });
+    const next = savedVocabRef.current.filter((_, i) => i !== idx);
+    savedVocabRef.current = next;
+    setSavedVocab(next);
+    ShadowRepository.vocab.save(next);
   }, []);
 
   const handleClearAllVocab = useCallback(() => {
+    savedVocabRef.current = [];
     setSavedVocab([]);
     ShadowRepository.vocab.save([]);
     showToast('Caderno de vocabulário limpo.');
@@ -3815,12 +3916,22 @@ export default function App() {
       setLastScore(null);
       setWordResults([]);
 
-      await ShadowRepository.books.save({
-        ...book,
-        currentIndex: validIdx
-      });
-      await refreshSavedBooksList();
-      showToast(`Lendo "${book.title}" na sentença ${validIdx + 1}`);
+      try {
+        const saved = await ShadowRepository.books.save({
+          ...book,
+          currentIndex: validIdx
+        });
+        await refreshSavedBooksList();
+        if (!saved) {
+          showToast(
+            '⚠️ Livro aberto, mas não foi possível salvar no dispositivo (armazenamento cheio).'
+          );
+          return;
+        }
+        showToast(`Lendo "${book.title}" na sentença ${validIdx + 1}`);
+      } catch {
+        showToast('⚠️ Livro aberto, mas ocorreu um erro ao salvar o progresso local.');
+      }
     },
     [refreshSavedBooksList, showToast, stopLoop]
   );
@@ -3828,8 +3939,26 @@ export default function App() {
   const handleUploadBook = useCallback(
     async (newBook: Book) => {
       stopLoop(false);
-      const firstPt = await fetchSentenceTranslation(newBook.sentences[0].en);
-      newBook.sentences[0].pt = firstPt;
+      if (!newBook.sentences || newBook.sentences.length === 0) {
+        showToast('⚠️ Nenhuma frase encontrada neste arquivo. Verifique o formato e tente novamente.');
+        return;
+      }
+
+      // Copy-on-write: never mutate the object received from the parser.
+      let firstPt = '';
+      try {
+        firstPt = await fetchSentenceTranslation(newBook.sentences[0].en);
+      } catch {
+        // Offline/translation failure must not abort the import: the sentence
+        // keeps its placeholder and is translated on demand later.
+        firstPt = '';
+      }
+      const preparedBook: Book = {
+        ...newBook,
+        sentences: newBook.sentences.map((sentence, idx) =>
+          idx === 0 ? { ...sentence, pt: firstPt } : { ...sentence }
+        )
+      };
 
       completedChallengeIndicesRef.current.clear();
       sentenceWordMistakeCountsRef.current = {};
@@ -3840,56 +3969,115 @@ export default function App() {
       activeStepIdxRef.current = 0;
       setActiveStepIdx(0);
       setCompletedStepIndices([]);
-      setCurrentBookId(newBook.id);
-      setCurrentBookTitle(newBook.title);
-      setSentences([...newBook.sentences]);
+      setCurrentBookId(preparedBook.id);
+      setCurrentBookTitle(preparedBook.title);
+      setSentences([...preparedBook.sentences]);
       setCurrentIndex(0);
       setSentenceProgress({});
       currentIndexRef.current = 0;
-      sentencesRef.current = [...newBook.sentences];
+      sentencesRef.current = [...preparedBook.sentences];
       setStreak(0);
       setChallengeUnlocked(false);
       setLastScore(null);
       setWordResults([]);
 
-      await ShadowRepository.books.save(newBook);
-      await refreshSavedBooksList();
-      showToast(
-        `Livro "${newBook.title}" salvo na memória! O app lembrará de onde você parou.`
-      );
+      try {
+        const saved = await ShadowRepository.books.save(preparedBook);
+        await refreshSavedBooksList();
+        if (!saved) {
+          showToast(
+            `⚠️ Livro "${preparedBook.title}" aberto, mas não foi possível salvar no dispositivo (armazenamento cheio).`
+          );
+          return;
+        }
+        showToast(
+          `Livro "${preparedBook.title}" salvo na memória! O app lembrará de onde você parou.`
+        );
+      } catch {
+        showToast(`⚠️ Livro "${preparedBook.title}" aberto, mas o salvamento local falhou.`);
+      }
     },
     [refreshSavedBooksList, showToast, stopLoop]
   );
 
   const handleDeleteSavedBook = useCallback(
     async (bookId: string, title: string) => {
-      await ShadowRepository.books.remove(bookId);
+      const wasActive = bookId === currentBookId;
+      const removed = await ShadowRepository.books.remove(bookId);
+      if (!removed) {
+        showToast(`⚠️ Não foi possível remover "${title}". Tente novamente.`);
+        return;
+      }
+      try {
+        localStorage.removeItem(`sr_bookmark_${bookId}`);
+        if (wasActive) localStorage.removeItem('sr_active_book_id');
+      } catch {
+        // ignore storage errors
+      }
       await refreshSavedBooksList();
+
+      if (wasActive) {
+        const remaining = await ShadowRepository.books.listAll();
+        const nextBook = remaining.find(b => b.id !== bookId);
+        await handleSelectBook(nextBook || SAMPLE_BOOKS[0], nextBook?.currentIndex || 0);
+      }
+
       showToast(`Livro "${title}" removido dos salvos.`);
     },
-    [refreshSavedBooksList, showToast]
+    [currentBookId, handleSelectBook, refreshSavedBooksList, showToast]
   );
 
   // Global keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Escape') {
-        setIsSettingsOpen(false);
-        setIsLibraryOpen(false);
-        setIsVocabOpen(false);
-        setIsStatsOpen(false);
-        setIsSentenceNavOpen(false);
-        setDictWord(null);
-        setIsBookCompletedOpen(false);
-        setIsDonateModalOpen(false);
-        setIsDriveSyncModalOpen(false);
+        // Close only the topmost layer: stacked modals (e.g. Dictionary over
+        // Stats) used to be dismissed all at once.
         if (fallbackSpeechRequest) {
           fallbackCancelledByUserRef.current = true;
           fallbackSpeechRequest.resolve('');
           setFallbackSpeechRequest(null);
+          return;
         }
         if (postSentenceChallengeRequest) {
           postSentenceChallengeRequest.resolve('cancel');
+          return;
+        }
+        if (dictWord !== null) {
+          setDictWord(null);
+          return;
+        }
+        if (isSettingsOpen) {
+          setIsSettingsOpen(false);
+          return;
+        }
+        if (isLibraryOpen) {
+          setIsLibraryOpen(false);
+          return;
+        }
+        if (isVocabOpen) {
+          setIsVocabOpen(false);
+          return;
+        }
+        if (isStatsOpen) {
+          setIsStatsOpen(false);
+          return;
+        }
+        if (isSentenceNavOpen) {
+          setIsSentenceNavOpen(false);
+          return;
+        }
+        if (isDriveSyncModalOpen) {
+          setIsDriveSyncModalOpen(false);
+          return;
+        }
+        if (isDonateModalOpen) {
+          setIsDonateModalOpen(false);
+          return;
+        }
+        if (isBookCompletedOpen) {
+          setIsBookCompletedOpen(false);
+          return;
         }
         return;
       }
@@ -4098,6 +4286,7 @@ export default function App() {
           abortWordReviewRef.current = null;
           abortReview();
         }
+        pendingChallengeResolveRef.current?.('cancel');
         setPostSentenceChallengeRequest(null);
         stopUserVoicePlayback();
         stopAllAudioPlayback();
@@ -4266,7 +4455,7 @@ export default function App() {
       data-engine-phase={enginePhase}
       className={`h-full min-h-0 w-full ${
         themeContainerClasses[settings.themeMode || 'dark']
-      } font-sans antialiased flex flex-col select-none overflow-hidden overflow-x-hidden transition-colors duration-200`}
+      } font-sans antialiased flex flex-col overflow-hidden overflow-x-hidden transition-colors duration-200`}
     >
       {/* TOP APP BAR */}
       <HeaderBar
@@ -4420,6 +4609,8 @@ export default function App() {
               </span>
               <span
                 id="stateBadge"
+                role="status"
+                aria-live="polite"
                 className={`font-semibold truncate min-w-0 ${
                   isMobileTrainingCompact ? 'flex-1 max-w-none' : 'max-w-[160px] sm:max-w-none'
                 } ${isListeningMic ? 'text-rose-300 font-extrabold' : stateBadgeColor}`}
@@ -6035,8 +6226,9 @@ export default function App() {
                     className="w-16 sm:w-20 h-2 bg-slate-900 rounded-full overflow-hidden flex items-center border border-rose-500/40"
                   >
                     <div
+                      ref={micLevelBarRef}
                       className="h-full bg-emerald-400 transition-all duration-75"
-                      style={{ width: `${Math.max(18, micVolumeLevel)}%` }}
+                      style={{ width: '18%' }}
                     />
                   </div>
                   {isListeningMic && (
@@ -6071,6 +6263,8 @@ export default function App() {
                 {lastScore !== null && (
                   <span
                     id="scoreBadge"
+                    role="status"
+                    aria-live="polite"
                     className={`text-[11px] font-bold tabular-nums shrink-0 ${
                       lastScore >= settings.threshold ? 'text-emerald-400' : 'text-amber-400'
                     }`}

@@ -5,6 +5,7 @@ import {
   SttStrictnessMode,
   TtsEngine
 } from '../types/shadowreader';
+import { getHandsFreeEffectiveMaxAttempts } from './blindAttempts';
 
 export interface EffectiveTtsRateParams {
   lang: string;
@@ -143,8 +144,11 @@ export function resolveSpeakErrorFeedbackPlan({
   const revealedByMaxErrors = isBlind && maxBlind > 0 && attempts >= maxBlind;
 
   const baseMax = Math.max(1, handsFreeMaxAttempts || 2);
-  const effectiveHandsFreeMax =
-    isBlind && maxBlind > 0 ? Math.max(baseMax, maxBlind + 1) : baseMax;
+  const effectiveHandsFreeMax = getHandsFreeEffectiveMaxAttempts(
+    stepCard,
+    baseMax,
+    blindMaxErrorsBeforeReveal
+  );
 
   if (autoHandsFree && attempts >= effectiveHandsFreeMax) {
     return {

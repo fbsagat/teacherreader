@@ -10,6 +10,8 @@ import {
   getSpeakableWord,
   lookupLocalWordInfo,
   segmentBookText,
+  MAX_BOOK_SENTENCE_CHARS,
+  findDuplicatePhoneticWords,
   classifySentenceCefr,
   splitIntoProsodyChunks,
   getBrazilianPhoneticTip,
@@ -73,7 +75,9 @@ test('calculateSimilarity handles partial matches and empty speech accurately', 
 test('getEffectiveSpeed computes clamped English and Portuguese speeds', () => {
   assert.equal(getEffectiveSpeed('en-US', 0.85, 1.15, 1.0), 0.85);
   assert.equal(getEffectiveSpeed('pt-BR', 0.85, 1.15, 1.0), 1.15);
-  assert.equal(getEffectiveSpeed('en-US', 0.85, 1.15, 0.5), 0.6);
+  // Browser and cloud playback now share the same safe bounds (0.65x–1.5x).
+  assert.equal(getEffectiveSpeed('en-US', 0.85, 1.15, 0.5), 0.65);
+  assert.equal(getEffectiveSpeed('en-US', 1.2, 1.15, 1.5), 1.5);
 });
 
 test('lookupLocalWordInfo resolves known words from DICT_DB and falls back cleanly', () => {
@@ -654,5 +658,126 @@ test('calculateSimilarity scores spoken clock-time digits as 100% against spelle
   );
   assert.equal(sim4.score, 100);
 });
+
+test('isWordMatch rejects minimal pairs and accepts real homophones/inflections', () => {
+  // Regression: these used to return true through overlapping rhyme groups.
+  assert.equal(isWordMatch('right', 'nine'), false);
+  assert.equal(isWordMatch('do', 'so'), false);
+  assert.equal(isWordMatch('know', 'show'), false);
+  assert.equal(isWordMatch('thought', 'taught'), false);
+  assert.equal(isWordMatch('art', 'part'), false);
+  assert.equal(isWordMatch('in', 'point'), false);
+  assert.equal(isWordMatch('sight', 'sit'), false);
+  assert.equal(isWordMatch('hat', 'bat'), false);
+
+  // Real homophones still match.
+  assert.equal(isWordMatch('right', 'write'), true);
+  assert.equal(isWordMatch('know', 'no'), true);
+  assert.equal(isWordMatch('knight', 'night'), true);
+
+  // Regular inflections still match without bare-prefix matching.
+  assert.equal(isWordMatch('walk', 'walking'), true);
+  assert.equal(isWordMatch('pictures', 'picture'), true);
+});
+
+test('homophone table has no word in more than one group', () => {
+  assert.deepEqual(findDuplicatePhoneticWords(), []);
+});
+
+test('calculateSimilarity guards empty targets and never returns NaN', () => {
+  const emptyTarget = calculateSimilarity('', 'banana');
+  assert.equal(emptyTarget.score, 0);
+  assert.equal(emptyTarget.totalWords, 0);
+
+  const punctuationOnly = calculateSimilarity('!!!', 'banana');
+  assert.equal(punctuationOnly.score, 0);
+
+  const numeric = calculateSimilarity('hello', 'hello');
+  assert.equal(Number.isFinite(numeric.score), true);
+});
+
+test('segmentBookText keeps very short sentences and text without final punctuation', () => {
+  assert.deepEqual(segmentBookText('Yes!').map(s => s.en), ['Yes!']);
+
+  const mixed = segmentBookText('A. B sem ponto');
+  assert.deepEqual(mixed.map(s => s.en), ['A.', 'B sem ponto']);
+});
+
+test('segmentBookText splits long sentences instead of dropping them (no word loss)', () => {
+  const makeSentence = (chars: number) => {
+    const words: string[] = [];
+    let length = 0;
+    let i = 0;
+    while (length < chars) {
+      const word = `word${i++}`;
+      words.push(word);
+      length += word.length + 1;
+    }
+    return `${words.join(' ')}.`;
+  };
+
+  for (const chars of [400, 500, 800]) {
+    const input = makeSentence(chars);
+    const sentences = segmentBookText(input);
+    assert.ok(sentences.length >= 1, `expected sentences for ${chars} chars`);
+    assert.ok(
+      sentences.every(s => s.en.length <= MAX_BOOK_SENTENCE_CHARS),
+      `expected every sentence <= ${MAX_BOOK_SENTENCE_CHARS} chars (${chars})`
+    );
+
+    const countWords = (text: string) =>
+      text
+        .replace(/[^a-z0-9\s]/gi, ' ')
+        .split(/\s+/)
+        .filter(Boolean).length;
+    const outputWords = sentences.reduce((acc, s) => acc + countWords(s.en), 0);
+    assert.equal(outputWords, countWords(input), `no word loss for ${chars} chars`);
+  }
+
+  const singleWord = segmentBookText('Hello');
+  assert.deepEqual(singleWord.map(s => s.en), ['Hello']);
+});
+
+test('alignPortugueseClauses distributes the translation instead of repeating the whole sentence', () => {
+  // P === M: one token per clause.
+  assert.deepEqual(alignPortugueseClauses(['Hello there', 'my old friend'], 'Olá amigo'), [
+    'Olá',
+    'amigo'
+  ]);
+
+  // P < M: never duplicate the full PT sentence across steps and never lose a token.
+  const aligned = alignPortugueseClauses(
+    ['Hello', 'my old friend', 'goodbye'],
+    'Olá amigo'
+  );
+  assert.equal(aligned.length, 3);
+  assert.equal(aligned.join(' ').replace(/\s+/g, ' ').trim(), 'Olá amigo');
+  assert.ok(aligned.every(part => part !== 'Olá amigo'));
+
+  // Empty translation stays empty.
+  assert.deepEqual(alignPortugueseClauses(['Hello', 'world'], ''), ['', '']);
+});
+
+test('isVocabDueForReview treats invalid review dates as due instead of hiding the word forever', () => {
+  const base = { word: 'hat', sentence: 'It looked like a hat.', date: '2026-01-01' };
+  assert.equal(isVocabDueForReview({ ...base, nextReviewDate: 'not-a-date' }), true);
+  assert.equal(isVocabDueForReview({ ...base, nextReviewDate: '' }), true);
+  assert.equal(
+    isVocabDueForReview({ ...base, nextReviewDate: '2999-01-01T00:00:00.000Z' }, new Date('2026-01-01')),
+    false
+  );
+  assert.equal(
+    isVocabDueForReview({ ...base, nextReviewDate: '2020-01-01T00:00:00.000Z' }, new Date('2026-01-01')),
+    true
+  );
+});
+
+test('cleanString and cleanSpeech normalize accents and typographic apostrophes', () => {
+  assert.equal(cleanString('café'), 'cafe');
+  assert.equal(cleanString('não'), 'nao');
+  assert.equal(cleanSpeech('I can’t wait'), 'i cannot wait');
+  assert.equal(cleanSpeech('It’s 9:00'), 'it is nine oclock');
+});
+
 
 

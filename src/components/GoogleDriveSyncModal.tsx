@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   DriveRemoteFileMeta,
   DriveSyncUserInfo
@@ -116,6 +116,14 @@ export const GoogleDriveSyncModal: React.FC<GoogleDriveSyncModalProps> = ({
   const [copiedDiagnostics, setCopiedDiagnostics] = useState(false);
 
   const currentHost = typeof window !== 'undefined' ? window.location.host : '';
+
+  // Destructive confirmations must never stay armed between openings.
+  useEffect(() => {
+    if (!isOpen) return;
+    setIsBusy(false);
+    setConfirmOverwriteWarning(false);
+    setConfirmDeleteBackup(false);
+  }, [isOpen]);
 
   const handleCopyOrigin = async () => {
     if (!currentHost || typeof navigator === 'undefined' || !navigator.clipboard) return;
@@ -453,7 +461,7 @@ export const GoogleDriveSyncModal: React.FC<GoogleDriveSyncModalProps> = ({
                     Palavras: {pendingConfirmation.remoteSummary.vocabCount} · Frases:{' '}
                     {pendingConfirmation.remoteSummary.totalSentencesCompleted}
                   </p>
-                  <p className="text-[10px] text-slate-500">
+                  <p className="text-[10px] text-slate-400">
                     Atualizado: {formatDateTimePt(pendingConfirmation.remoteSummary.updatedAt)}
                   </p>
                 </div>

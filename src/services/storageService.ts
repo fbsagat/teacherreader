@@ -6,51 +6,13 @@ import {
   VocabItem,
   WordMatchResult
 } from '../types/shadowreader';
+import { localDayKey } from '../utils/localTime';
+import { DEFAULT_SETTINGS, normalizeSettings } from '../utils/settingsNormalizer';
+
+export { DEFAULT_SETTINGS };
 
 const DB_NAME = 'ShadowReaderDB';
 const DB_VERSION = 1;
-
-export const DEFAULT_SETTINGS: PedagogicalSettings = {
-  ttsEngine: 'gemini_tts',
-  preferredVoiceEnUri: '',
-  preferredVoicePtUri: '',
-  geminiVoiceName: 'Kore',
-  geminiVoiceStyle: 'clear_teacher',
-  ttsCacheEnabled: true,
-  sttProvider: 'hybrid_ai',
-  sttSilencePauseMode: 'normal',
-  sttStrictness: 'balanced',
-  enableAiPronunciationCoach: true,
-  micNoiseSuppression: true,
-  audioFlow: 'pt_first',
-  cardSequence: ['pt', 'en', 'speak', 'challenges'],
-  visualCardOrder: ['pt', 'en', 'literal'],
-  enableBlindSpeakingStage: false,
-  blindMaxErrorsBeforeReveal: 2,
-  blindSpeakingOnFullSentence: true,
-  repeatOnError: true,
-  slowdownOnError: true,
-  readWordsOnSuccess: false,
-  enablePostSentenceChallenges: true,
-  enableWordPronunciationChallenge: true,
-  enableWordMatchingChallenge: true,
-  repeatSentenceOnChallengeFail: true,
-  threshold: 75,
-  ttsSpeedEn: 0.85,
-  ttsSpeedPt: 1.15,
-  audioBeeps: true,
-  autoHandsFree: false,
-  handsFreeMaxAttempts: 2,
-  handsFreeChallengeMode: 'voice_all',
-  handsFreeVoiceCommands: true,
-  handsFreeAutoStart: false,
-  themeMode: 'dark',
-  fontSizeScale: 110,
-  studyViewMode: 'cards',
-  showConnectedSpeech: false,
-  dailyGoalSentences: 10,
-  practiceDaysGoal: 14
-};
 
 export const DEFAULT_STATS: StudyStats = {
   totalSentencesCompleted: 0,
@@ -246,6 +208,8 @@ export function loadSavedSettings(): PedagogicalSettings {
     const raw = localStorage.getItem('shadowreader_opts');
     if (raw) {
       const parsed = JSON.parse(raw);
+      // Keep the raw merge for the legacy migrations below; the final value is
+      // always sanitized by normalizeSettings(merged).
       const merged: PedagogicalSettings = { ...DEFAULT_SETTINGS, ...parsed };
       if (!parsed._v2BlindOptIn) {
         merged.enableBlindSpeakingStage = false;
@@ -309,25 +273,13 @@ export function loadSavedSettings(): PedagogicalSettings {
           merged.visualCardOrder = ['pt', 'en', 'literal'];
         }
       }
-      // Clean up any removed paid/unconnected providers and migrate initial default to Gemini Neural TTS
-      const validTtsEngines = new Set(['gemini_tts', 'auto', 'browser_custom', 'online']);
-      if (!validTtsEngines.has(merged.ttsEngine)) {
+      // Migrate the initial "auto" default to Gemini Neural TTS on first load.
+      // Invalid/removed providers and every numeric field are handled by
+      // normalizeSettings below.
+      if (!parsed._v4GeminiDefault && merged.ttsEngine === 'auto') {
         merged.ttsEngine = 'gemini_tts';
-      } else if (!parsed._v4GeminiDefault && merged.ttsEngine === 'auto') {
-        merged.ttsEngine = 'gemini_tts';
       }
-      const validSttProviders = new Set(['hybrid_ai', 'web_speech', 'gemini_stt']);
-      if (!merged.sttProvider || !validSttProviders.has(merged.sttProvider)) {
-        merged.sttProvider = 'hybrid_ai';
-      }
-      // Normalize & clamp global text size scale (85% - 135%, default 110%)
-      const rawScale = Number(merged.fontSizeScale);
-      if (!Number.isFinite(rawScale)) {
-        merged.fontSizeScale = 110;
-      } else {
-        merged.fontSizeScale = Math.min(135, Math.max(85, Math.round(rawScale / 5) * 5));
-      }
-      return merged;
+      return normalizeSettings(merged);
     }
   } catch {
     // ignore
@@ -400,7 +352,7 @@ export function recordEvaluationInStats(
   wordResults: WordMatchResult[],
   sentenceCompleted: boolean = passed
 ): StudyStats {
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = localDayKey();
   const prevDay = currentStats.dailyHistory[todayKey] || {
     dateKey: todayKey,
     sentencesPracticed: 0,

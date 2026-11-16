@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { VocabItem } from '../types/shadowreader';
 import { isVocabDueForReview } from '../utils/shadowing';
+import { localDayKey } from '../utils/localTime';
 
 interface VocabModalProps {
   isOpen: boolean;
@@ -28,6 +29,15 @@ export const VocabModal: React.FC<VocabModalProps> = ({
   const [cardIndex, setCardIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
 
+  // Reset the deck/flip state every time the modal opens.
+  useEffect(() => {
+    if (!isOpen) return;
+    setPracticeMode(false);
+    setOnlyDueSrs(false);
+    setCardIndex(0);
+    setFlipped(false);
+  }, [isOpen]);
+
   const dueCards = useMemo(() => {
     const now = new Date();
     return savedVocab.filter(item => isVocabDueForReview(item, now));
@@ -54,7 +64,7 @@ export const VocabModal: React.FC<VocabModalProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `shadowreader_vocab_${new Date().toISOString().slice(0, 10)}.txt`;
+    a.download = `shadowreader_vocab_${localDayKey()}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -257,7 +267,7 @@ export const VocabModal: React.FC<VocabModalProps> = ({
         ) : (
           <div className="mt-4 flex-1 overflow-y-auto space-y-2" id="savedVocabList">
             {savedVocab.length === 0 ? (
-              <p className="text-xs text-slate-500 text-center py-6">
+              <p className="text-xs text-slate-400 text-center py-6">
                 Nenhuma frase salva ainda. Clique em "Salvar frase" ou toque em palavras para
                 adicioná-las aqui.
               </p>
@@ -307,14 +317,14 @@ export const VocabModal: React.FC<VocabModalProps> = ({
                       <p className="text-xs text-slate-300 mt-0.5 leading-relaxed break-words">
                         {item.sentence}
                       </p>
-                      <span className="text-[10px] text-slate-500">Salvo em {item.date}</span>
+                      <span className="text-[10px] text-slate-400">Salvo em {item.date}</span>
                     </div>
                     <button
                       type="button"
                       onClick={() => onDeleteItem(idx)}
                       aria-label={`Remover termo ${item.word}`}
                       title="Remover termo"
-                      className="text-slate-500 hover:text-rose-400 p-1 shrink-0 cursor-pointer"
+                      className="text-slate-400 hover:text-rose-400 p-1 shrink-0 cursor-pointer"
                     >
                       ✕
                     </button>

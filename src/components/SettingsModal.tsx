@@ -13,6 +13,7 @@ import {
   TtsEngine,
   VisualCardType
 } from '../types/shadowreader';
+import { DEFAULT_SETTINGS } from '../utils/settingsNormalizer';
 import {
   RECOMMENDED_CARD_PRESETS,
   STEP_CARD_META,
@@ -635,7 +636,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 {sIdx + 1}º {meta.icon} {meta.shortLabel}
                               </span>
                               {sIdx < preset.cardSequence.length - 1 && (
-                                <span className="text-[9px] text-slate-500">→</span>
+                                <span className="text-[9px] text-slate-400">→</span>
                               )}
                             </React.Fragment>
                           );
@@ -712,7 +713,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             disabled={idx === 0}
                             onClick={() => handleMoveStepCard(idx, -1)}
                             title="Mover esta etapa para antes"
-                            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-200 text-[10px] font-bold cursor-pointer disabled:cursor-not-allowed"
+                            aria-label="Mover esta etapa para antes"
+                            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-200 text-[10px] font-bold cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
                           >
                             ↑
                           </button>
@@ -722,7 +724,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             disabled={idx === activeSequence.length - 1}
                             onClick={() => handleMoveStepCard(idx, 1)}
                             title="Mover esta etapa para depois"
-                            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-200 text-[10px] font-bold cursor-pointer disabled:cursor-not-allowed"
+                            aria-label="Mover esta etapa para depois"
+                            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-200 text-[10px] font-bold cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
                           >
                             ↓
                           </button>
@@ -731,7 +734,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             type="button"
                             onClick={() => handleRepeatStepCard(idx)}
                             title="Repetir / duplicar esta etapa logo em seguida"
-                            className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 text-[10px] font-bold cursor-pointer flex items-center gap-1"
+                            aria-label="Repetir esta etapa logo em seguida"
+                            className="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 text-[10px] font-bold cursor-pointer flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
                           >
                             <span>🔁</span>
                             <span className="hidden sm:inline">Repetir</span>
@@ -742,7 +746,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             disabled={activeSequence.length <= 1}
                             onClick={() => handleRemoveStepCard(idx)}
                             title="Remover esta etapa da sequência"
-                            className="px-2 py-1 rounded bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/30 disabled:opacity-30 text-rose-300 text-[10px] font-bold cursor-pointer disabled:cursor-not-allowed"
+                            aria-label="Remover esta etapa da sequência"
+                            className="px-2 py-1 rounded bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/30 disabled:opacity-30 text-rose-300 text-[10px] font-bold cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
                           >
                             ✕
                           </button>
@@ -1316,9 +1321,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         value={settings.preferredVoiceEnUri || ''}
                         onChange={e => {
                           onUpdateSettings({ preferredVoiceEnUri: e.target.value });
+                          const picked = enVoices.find(v => v.voiceURI === e.target.value);
                           onShowToast(
-                            e.target.value
-                              ? `🇺🇸 Voz em inglês fixada: ${e.target.value}`
+                            picked
+                              ? `🇺🇸 Voz em inglês fixada: ${picked.name} (${picked.lang})`
                               : '🇺🇸 Seleção automática da melhor voz em inglês.'
                           );
                         }}
@@ -1346,9 +1352,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         value={settings.preferredVoicePtUri || ''}
                         onChange={e => {
                           onUpdateSettings({ preferredVoicePtUri: e.target.value });
+                          const picked = ptVoices.find(v => v.voiceURI === e.target.value);
                           onShowToast(
-                            e.target.value
-                              ? `🇧🇷 Voz em português fixada: ${e.target.value}`
+                            picked
+                              ? `🇧🇷 Voz em português fixada: ${picked.name} (${picked.lang})`
                               : '🇧🇷 Seleção automática da melhor voz em português.'
                           );
                         }}
@@ -1725,7 +1732,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       className={`flex items-start gap-2 p-1.5 rounded-lg border transition ${
                         voiceCompat.isSlowdownRelevant
                           ? 'bg-slate-900/70 border-slate-800 text-slate-300 cursor-pointer'
-                          : 'bg-slate-900/35 border-slate-800/50 text-slate-500 opacity-65 cursor-not-allowed'
+                          : 'bg-slate-900/35 border-slate-800/50 text-slate-400 opacity-65 cursor-not-allowed'
                       }`}
                     >
                       <input
@@ -2158,42 +2165,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               id="btnResetDefaultSettings"
               type="button"
               onClick={() => {
-                onUpdateSettings({
-                  ttsEngine: 'gemini_tts',
-                  preferredVoiceEnUri: '',
-                  preferredVoicePtUri: '',
-                  geminiVoiceName: 'Kore',
-                  geminiVoiceStyle: 'clear_teacher',
-                  ttsCacheEnabled: true,
-                  sttProvider: 'hybrid_ai',
-                  sttSilencePauseMode: 'normal',
-                  sttStrictness: 'balanced',
-                  enableAiPronunciationCoach: true,
-                  micNoiseSuppression: true,
-                  audioFlow: 'pt_first',
-                  cardSequence: ['pt', 'en', 'speak', 'challenges'],
-                  visualCardOrder: ['pt', 'en', 'literal'],
-                  enableBlindSpeakingStage: false,
-                  blindMaxErrorsBeforeReveal: 2,
-                  blindSpeakingOnFullSentence: true,
-                  repeatOnError: true,
-                  slowdownOnError: true,
-                  readWordsOnSuccess: false,
-                  enablePostSentenceChallenges: true,
-                  enableWordPronunciationChallenge: true,
-                  enableWordMatchingChallenge: true,
-                  repeatSentenceOnChallengeFail: true,
-                  threshold: 75,
-                  ttsSpeedEn: 0.85,
-                  ttsSpeedPt: 1.15,
-                  audioBeeps: true,
-                  autoHandsFree: false,
-                  handsFreeMaxAttempts: 2,
-                  handsFreeChallengeMode: 'voice_all',
-                  handsFreeVoiceCommands: true,
-                  handsFreeAutoStart: false,
-                  fontSizeScale: 110
-                });
+                onUpdateSettings({ ...DEFAULT_SETTINGS });
                 onShowToast(
                   'Configurações e ordem das etapas restauradas para o padrão recomendado!'
                 );
@@ -2202,7 +2174,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             >
               Restaurar Padrões
             </button>
-            <span className="text-[10px] text-slate-500 hidden sm:inline">
+            <span className="text-[10px] text-slate-400 hidden sm:inline">
               Atalhos: Espaço (Treino) · R (EN) · T (PT) · M (Falar)
             </span>
           </div>
@@ -2213,7 +2185,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onClick={onClose}
             className="min-h-[42px] sm:min-h-0 px-4 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs cursor-pointer whitespace-nowrap shadow-md shadow-brand-500/20"
           >
-            Salvar e Fechar
+            Fechar
           </button>
         </div>
       </div>

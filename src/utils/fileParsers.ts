@@ -8,6 +8,11 @@ export interface ParsedBookResult {
   sentences: Sentence[];
 }
 
+// Keep the version in sync with index.html (PDF.js is loaded from a CDN there).
+export const PDFJS_VERSION = '3.11.174';
+export const PDFJS_BASE_URL = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}`;
+export const PDFJS_WORKER_URL = `${PDFJS_BASE_URL}/pdf.worker.min.js`;
+
 export const SUPPORTED_FILE_EXTENSIONS = [
   '.pdf',
   '.txt',
@@ -40,6 +45,13 @@ export const SUPPORTED_FORMATS_BADGES: Array<{
   { ext: 'CSV / JSON', label: '.csv/.json', desc: 'Listas bilíngues (EN/PT) ou flashcards' },
   { ext: 'RTF', label: '.rtf', desc: 'Rich Text Format' }
 ];
+
+export const SUPPORTED_FORMATS_MESSAGE =
+  'Importe PDF, EPUB, DOCX, TXT, MD, SRT, VTT, HTML, CSV, TSV, JSON ou RTF.';
+
+function stripBom(text: string): string {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
 
 /**
  * Clean Markdown syntax into plain readable text for sentence segmentation
@@ -82,7 +94,7 @@ export function cleanMarkdownText(md: string): string {
  * Clean SRT and WebVTT subtitle files into continuous dialogue text
  */
 export function cleanSubtitleText(raw: string): string {
-  const lines = raw.replace(/\r\n/g, '\n').split('\n');
+  const lines = stripBom(raw).replace(/\r\n/g, '\n').split('\n');
   const cleanedLines: string[] = [];
 
   for (const rawLine of lines) {
@@ -114,21 +126,219 @@ export function cleanSubtitleText(raw: string): string {
   return cleanedLines.join(' ').replace(/\s+/g, ' ').trim();
 }
 
+/** Bytes 0x80–0x9F que o CP1252 redefine (o resto coincide com Latin-1). */
+const CP1252_C1_CODEPOINTS: Record<number, number> = {
+  0x80: 0x20ac,
+  0x82: 0x201a,
+  0x83: 0x0192,
+  0x84: 0x201e,
+  0x85: 0x2026,
+  0x86: 0x2020,
+  0x87: 0x2021,
+  0x88: 0x02c6,
+  0x89: 0x2030,
+  0x8a: 0x0160,
+  0x8b: 0x2039,
+  0x8c: 0x0152,
+  0x8e: 0x017d,
+  0x91: 0x2018,
+  0x92: 0x2019,
+  0x93: 0x201c,
+  0x94: 0x201d,
+  0x95: 0x2022,
+  0x96: 0x2013,
+  0x97: 0x2014,
+  0x98: 0x02dc,
+  0x99: 0x2122,
+  0x9a: 0x0161,
+  0x9b: 0x203a,
+  0x9c: 0x0153,
+  0x9e: 0x017e,
+  0x9f: 0x0178
+};
+
+function decodeCP1252Byte(byte: number): string {
+  const codepoint = CP1252_C1_CODEPOINTS[byte];
+  return String.fromCharCode(codepoint ?? byte);
+}
+
+/** Destinos RTF que não contêm texto legível (fontes, cores, metadados, imagens). */
+const RTF_SKIP_DESTINATIONS = new Set([
+  'fonttbl',
+  'colortbl',
+  'stylesheet',
+  'info',
+  'pict',
+  'object',
+  'header',
+  'headerl',
+  'headerr',
+  'footer',
+  'footerl',
+  'footerr',
+  'themedata',
+  'colorschememapping',
+  'datastore',
+  'latentstyles',
+  'xmlnstbl',
+  'listtable',
+  'listoverridetable',
+  'rsidtbl',
+  'generator',
+  'filetbl',
+  'revtbl',
+  'wgrffmtfilter',
+  'fldinst',
+  'bkmkstart',
+  'bkmkend'
+]);
+
 /**
- * Clean RTF (Rich Text Format) into plain text
+ * Clean RTF (Rich Text Format) into plain text.
+ *
+ * Uses a real state machine instead of regex so that `\'e9` becomes "é"
+ * (CP1252), escaped braces/quotes survive, `{\*\...}` destinations are
+ * skipped and paragraph breaks are preserved.
  */
 export function cleanRtfText(rtf: string): string {
-  return rtf
-    .replace(/\\par[d]?/g, '\n')
-    .replace(/\{\\fonttbl[\s\S]*?\}/g, '')
-    .replace(/\{\\colortbl[\s\S]*?\}/g, '')
-    .replace(/\{\\stylesheet[\s\S]*?\}/g, '')
-    .replace(/\{\\\*\\[^}]+\}/g, '')
-    .replace(/\\'[0-9a-fA-F]{2}/g, ' ')
-    .replace(/\\[a-zA-Z]+\d*\s?/g, ' ')
-    .replace(/[{}]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  let out = '';
+  let i = 0;
+  // Each group inherits the skip state of its parent; `\*` marks an ignorable group.
+  const groups: Array<{ skip: boolean; ignorable: boolean }> = [
+    { skip: false, ignorable: false }
+  ];
+  let pendingFallbackSkips = 0;
+
+  const current = () => groups[groups.length - 1];
+  const skipping = () => current().skip || current().ignorable;
+
+  while (i < rtf.length) {
+    const ch = rtf[i];
+
+    if (ch === '{') {
+      groups.push({ skip: current().skip, ignorable: false });
+      i += 1;
+      continue;
+    }
+
+    if (ch === '}') {
+      if (groups.length > 1) groups.pop();
+      i += 1;
+      continue;
+    }
+
+    if (ch === '\\') {
+      const next = rtf[i + 1];
+
+      // Escaped literals: \\ \{ \}
+      if (next === '\\' || next === '{' || next === '}') {
+        if (!skipping()) out += next;
+        i += 2;
+        continue;
+      }
+
+      // \'hh → single CP1252 byte
+      if (next === "'") {
+        const hex = rtf.slice(i + 2, i + 4);
+        if (/^[0-9a-fA-F]{2}$/.test(hex)) {
+          if (pendingFallbackSkips > 0) {
+            pendingFallbackSkips -= 1;
+          } else if (!skipping()) {
+            out += decodeCP1252Byte(parseInt(hex, 16));
+          }
+          i += 4;
+          continue;
+        }
+        i += 2;
+        continue;
+      }
+
+      // \* marks the current group as an ignorable destination
+      if (next === '*') {
+        current().ignorable = true;
+        i += 2;
+        continue;
+      }
+
+      // Control symbol (a single non-letter after the backslash)
+      if (!/[a-zA-Z]/.test(next || '')) {
+        if (!skipping()) {
+          if (next === '~') out += ' ';
+          else if (next === '_') out += '-';
+          else if (next === '\n' || next === '\r') out += '\n';
+          else if (next === '\t') out += ' ';
+        }
+        i += 2;
+        continue;
+      }
+
+      // Control word: letters, optional sign + number, optional delimiter space
+      let j = i + 1;
+      while (j < rtf.length && /[a-zA-Z]/.test(rtf[j])) j += 1;
+      const word = rtf.slice(i + 1, j).toLowerCase();
+
+      let sign = 1;
+      if (rtf[j] === '-') {
+        sign = -1;
+        j += 1;
+      }
+      let digits = '';
+      while (j < rtf.length && /[0-9]/.test(rtf[j])) {
+        digits += rtf[j];
+        j += 1;
+      }
+      const numeric = digits ? sign * Number(digits) : null;
+      if (rtf[j] === ' ') j += 1;
+
+      if (RTF_SKIP_DESTINATIONS.has(word)) current().skip = true;
+
+      if (!skipping()) {
+        if (word === 'par' || word === 'line' || word === 'sect' || word === 'page') {
+          out += '\n';
+        } else if (word === 'tab') {
+          out += ' ';
+        } else if (word === 'emdash') {
+          out += '—';
+        } else if (word === 'endash') {
+          out += '–';
+        } else if (word === 'lquote') {
+          out += '‘';
+        } else if (word === 'rquote') {
+          out += '’';
+        } else if (word === 'ldblquote') {
+          out += '“';
+        } else if (word === 'rdblquote') {
+          out += '”';
+        } else if (word === 'bullet') {
+          out += '•';
+        } else if (word === 'u' && numeric !== null) {
+          const code = numeric < 0 ? numeric + 65536 : numeric;
+          out += String.fromCharCode(code);
+          // \uN is followed by a fallback representation that must be skipped.
+          pendingFallbackSkips = 1;
+        }
+      }
+
+      i = j;
+      continue;
+    }
+
+    if (!skipping()) {
+      if (ch === '\r') {
+        i += 1;
+        continue;
+      }
+      if (pendingFallbackSkips > 0) {
+        pendingFallbackSkips -= 1;
+        i += 1;
+        continue;
+      }
+      out += ch;
+    }
+    i += 1;
+  }
+
+  return out.replace(/[ \t]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -167,7 +377,7 @@ export function extractTextFromHtml(html: string): string {
   }
 
   // Fallback regex strip if DOMParser is unavailable (e.g. Node unit tests)
-  return html
+  return stripBom(html)
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
@@ -176,46 +386,86 @@ export function extractTextFromHtml(html: string): string {
 }
 
 /**
+ * Splits delimiter-separated content into rows/fields. Handles quoted fields
+ * with embedded delimiters/newlines and the CSV `""` escape for a literal quote.
+ */
+function parseDelimitedRows(raw: string, delimiter: string): string[][] {
+  const text = stripBom(raw).replace(/\r\n?/g, '\n');
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  let i = 0;
+
+  while (i < text.length) {
+    const ch = text[i];
+
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i += 2;
+          continue;
+        }
+        inQuotes = false;
+        i += 1;
+        continue;
+      }
+      field += ch;
+      i += 1;
+      continue;
+    }
+
+    if (ch === '"') {
+      inQuotes = true;
+      i += 1;
+      continue;
+    }
+    if (ch === delimiter) {
+      row.push(field.trim());
+      field = '';
+      i += 1;
+      continue;
+    }
+    if (ch === '\n') {
+      row.push(field.trim());
+      rows.push(row);
+      row = [];
+      field = '';
+      i += 1;
+      continue;
+    }
+
+    field += ch;
+    i += 1;
+  }
+
+  row.push(field.trim());
+  rows.push(row);
+
+  return rows.filter(cells => cells.some(cell => cell.trim().length > 0));
+}
+
+/**
  * Parse CSV / TSV content (supports single-column English or 2-column English + Portuguese)
  */
 export function parseCsvOrTsvSentences(raw: string, delimiter: ',' | '\t' = ','): Sentence[] {
-  const lines = raw.replace(/\r\n/g, '\n').split('\n').filter(l => l.trim().length > 0);
+  const rows = parseDelimitedRows(raw, delimiter);
   const results: Sentence[] = [];
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    // Parse simple CSV row respecting quotes
-    const cols: string[] = [];
-    let current = '';
-    let inQuotes = false;
-    for (let c = 0; c < line.length; c++) {
-      const ch = line[c];
-      if (ch === '"') {
-        inQuotes = !inQuotes;
-      } else if (ch === delimiter && !inQuotes) {
-        cols.push(current.trim());
-        current = '';
-      } else {
-        current += ch;
-      }
-    }
-    cols.push(current.trim());
-
-    const col0 = (cols[0] || '').replace(/^["']|["']$/g, '').trim();
-    const col1 = (cols[1] || '').replace(/^["']|["']$/g, '').trim();
+  for (let i = 0; i < rows.length; i++) {
+    const col0 = (rows[i][0] || '').trim();
+    const col1 = (rows[i][1] || '').trim();
 
     // Skip header row like "en,pt" or "english,portuguese"
-    if (
-      i === 0 &&
-      /^(en|english|sentence|frase|text|inglês)$/i.test(col0)
-    ) {
+    if (i === 0 && /^(en|english|sentence|frase|text|inglês)$/i.test(col0)) {
       continue;
     }
 
     if (col0.length >= 6 && /[a-zA-Z]/.test(col0)) {
       results.push({
         en: /[.!?]$/.test(col0) ? col0 : `${col0}.`,
-        pt: col1 || ''
+        pt: col1
       });
     }
   }
@@ -228,7 +478,15 @@ export function parseCsvOrTsvSentences(raw: string, delimiter: ',' | '\t' = ',')
  * Parse JSON file (supports array of strings, array of {en, pt}, or {sentences: [...]})
  */
 export function parseJsonSentences(raw: string): Sentence[] {
-  const data = JSON.parse(raw);
+  let data: any;
+  try {
+    data = JSON.parse(stripBom(raw));
+  } catch {
+    throw new Error(
+      'JSON inválido: verifique vírgulas, aspas e chaves do arquivo e tente novamente.'
+    );
+  }
+
   const list = Array.isArray(data)
     ? data
     : Array.isArray(data?.sentences)
@@ -260,6 +518,194 @@ export function parseJsonSentences(raw: string): Sentence[] {
   return sentences;
 }
 
+/** Erro de descompactação que não deve ser tratado como "entrada corrompida". */
+class ZipUnsupportedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ZipUnsupportedError';
+  }
+}
+
+interface ZipArchiveEntry {
+  name: string;
+  compressionMethod: number;
+  compressedSize: number;
+  localHeaderOffset: number;
+}
+
+const ZIP_LOCAL_HEADER_SIGNATURE = 0x04034b50;
+const ZIP_CENTRAL_HEADER_SIGNATURE = 0x02014b50;
+const ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
+
+/**
+ * Reads the ZIP central directory. Unlike local headers, it always carries the
+ * real compressed size — even when the entry uses a data descriptor (bit 3).
+ */
+function readZipCentralDirectory(buffer: ArrayBuffer): ZipArchiveEntry[] {
+  const view = new DataView(buffer);
+  if (view.byteLength < 22) return [];
+
+  let eocdOffset = -1;
+  const minOffset = Math.max(0, view.byteLength - 66_000);
+  for (let offset = view.byteLength - 22; offset >= minOffset; offset -= 1) {
+    if (view.getUint32(offset, true) === ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE) {
+      eocdOffset = offset;
+      break;
+    }
+  }
+  if (eocdOffset < 0) return [];
+
+  const totalEntries = view.getUint16(eocdOffset + 10, true);
+  const centralOffset = view.getUint32(eocdOffset + 16, true);
+  if (totalEntries === 0 || centralOffset >= view.byteLength) return [];
+
+  const decoder = new TextDecoder('utf-8');
+  const entries: ZipArchiveEntry[] = [];
+  let offset = centralOffset;
+
+  for (let index = 0; index < totalEntries; index += 1) {
+    if (offset + 46 > view.byteLength) break;
+    if (view.getUint32(offset, true) !== ZIP_CENTRAL_HEADER_SIGNATURE) break;
+
+    const compressionMethod = view.getUint16(offset + 10, true);
+    const compressedSize = view.getUint32(offset + 20, true);
+    const nameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    const localHeaderOffset = view.getUint32(offset + 42, true);
+
+    if (offset + 46 + nameLength > view.byteLength) break;
+    const name = decoder.decode(new Uint8Array(buffer, offset + 46, nameLength));
+    entries.push({ name, compressionMethod, compressedSize, localHeaderOffset });
+
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+
+  return entries;
+}
+
+function findNextZipLocalHeader(view: DataView, from: number): number {
+  for (let offset = Math.max(0, from); offset + 4 <= view.byteLength; offset += 1) {
+    if (view.getUint32(offset, true) === ZIP_LOCAL_HEADER_SIGNATURE) return offset;
+  }
+  return -1;
+}
+
+async function readZipEntryContent(
+  buffer: ArrayBuffer,
+  entry: ZipArchiveEntry
+): Promise<string> {
+  const view = new DataView(buffer);
+  const localOffset = entry.localHeaderOffset;
+
+  if (localOffset + 30 > view.byteLength) {
+    throw new Error(`Entrada ZIP inválida: ${entry.name}`);
+  }
+  if (view.getUint32(localOffset, true) !== ZIP_LOCAL_HEADER_SIGNATURE) {
+    throw new Error(`Cabeçalho ZIP inválido: ${entry.name}`);
+  }
+
+  const nameLength = view.getUint16(localOffset + 26, true);
+  const extraLength = view.getUint16(localOffset + 28, true);
+  const dataStart = localOffset + 30 + nameLength + extraLength;
+  const dataEnd = dataStart + entry.compressedSize;
+  if (dataEnd > view.byteLength) {
+    throw new Error(`Entrada ZIP truncada: ${entry.name}`);
+  }
+
+  const decoder = new TextDecoder('utf-8');
+  const payload = new Uint8Array(buffer, dataStart, entry.compressedSize);
+
+  if (entry.compressionMethod === 0) {
+    return decoder.decode(payload);
+  }
+
+  if (entry.compressionMethod === 8) {
+    if (typeof DecompressionStream === 'undefined') {
+      throw new ZipUnsupportedError(
+        'Este navegador não consegue descompactar arquivos EPUB/DOCX. Atualize o navegador ou importe o texto como .TXT.'
+      );
+    }
+    const stream = new DecompressionStream('deflate-raw');
+    const writer = stream.writable.getWriter();
+    await writer.write(payload);
+    await writer.close();
+    const decompressed = await new Response(stream.readable).arrayBuffer();
+    return decoder.decode(decompressed);
+  }
+
+  throw new ZipUnsupportedError(
+    `Compressão ZIP não suportada (método ${entry.compressionMethod}) em "${entry.name}".`
+  );
+}
+
+/** Fallback for archives without a readable central directory. */
+async function extractZipTextEntriesFromLocalHeaders(
+  buffer: ArrayBuffer,
+  fileFilter: (fileName: string) => boolean
+): Promise<Array<{ name: string; content: string }>> {
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  const decoder = new TextDecoder('utf-8');
+  const entries: Array<{ name: string; content: string }> = [];
+
+  let offset = 0;
+  while (offset + 30 <= bytes.length) {
+    if (view.getUint32(offset, true) !== ZIP_LOCAL_HEADER_SIGNATURE) {
+      offset += 1;
+      continue;
+    }
+
+    const flags = view.getUint16(offset + 6, true);
+    const compressionMethod = view.getUint16(offset + 8, true);
+    const compressedSize = view.getUint32(offset + 18, true);
+    const nameLength = view.getUint16(offset + 26, true);
+    const extraLength = view.getUint16(offset + 28, true);
+    const dataStart = offset + 30 + nameLength + extraLength;
+    if (dataStart > bytes.length) break;
+
+    const fileName = decoder.decode(bytes.subarray(offset + 30, offset + 30 + nameLength));
+
+    // Data descriptor (bit 3) or unknown size: skip just this entry instead of
+    // aborting the whole archive.
+    if ((flags & 0x08) !== 0 || compressedSize === 0) {
+      const nextOffset = findNextZipLocalHeader(view, dataStart);
+      if (nextOffset < 0) break;
+      offset = nextOffset;
+      continue;
+    }
+
+    const dataEnd = dataStart + compressedSize;
+    if (dataEnd > bytes.length) {
+      const nextOffset = findNextZipLocalHeader(view, dataStart);
+      if (nextOffset < 0) break;
+      offset = nextOffset;
+      continue;
+    }
+
+    if (fileFilter(fileName)) {
+      try {
+        entries.push({
+          name: fileName,
+          content: await readZipEntryContent(buffer, {
+            name: fileName,
+            compressionMethod,
+            compressedSize,
+            localHeaderOffset: offset
+          })
+        });
+      } catch (error) {
+        if (error instanceof ZipUnsupportedError) throw error;
+        // Ignore a corrupt entry and keep reading the archive.
+      }
+    }
+
+    offset = dataEnd;
+  }
+
+  return entries;
+}
+
 /**
  * Lightweight browser-native ZIP extractor using DataView + DecompressionStream('deflate-raw')
  * Used to extract XML/XHTML text from .epub and .docx archives without external libraries.
@@ -268,67 +714,179 @@ async function extractZipTextEntries(
   buffer: ArrayBuffer,
   fileFilter: (fileName: string) => boolean
 ): Promise<Array<{ name: string; content: string }>> {
-  const bytes = new Uint8Array(buffer);
-  const view = new DataView(buffer);
-  const entries: Array<{ name: string; content: string }> = [];
-  const decoder = new TextDecoder('utf-8');
-
-  let offset = 0;
-  while (offset + 30 <= bytes.length) {
-    const signature = view.getUint32(offset, true);
-    // Local file header signature = 0x04034b50
-    if (signature !== 0x04034b50) {
-      break;
-    }
-
-    const generalPurposeFlag = view.getUint16(offset + 6, true);
-    const compressionMethod = view.getUint16(offset + 8, true);
-    const compressedSize = view.getUint32(offset + 18, true);
-    const fileNameLength = view.getUint16(offset + 26, true);
-    const extraFieldLength = view.getUint16(offset + 28, true);
-
-    const nameBytes = bytes.subarray(offset + 30, offset + 30 + fileNameLength);
-    const fileName = decoder.decode(nameBytes);
-    const dataStart = offset + 30 + fileNameLength + extraFieldLength;
-
-    // If bit 3 of generalPurposeFlag is set and compressedSize is 0, we cannot rely on local header size alone
-    if ((generalPurposeFlag & 0x08) !== 0 && compressedSize === 0) {
-      break;
-    }
-
-    const dataEnd = dataStart + compressedSize;
-    if (dataEnd > bytes.length) break;
-
-    if (fileFilter(fileName) && compressedSize > 0) {
-      const compressedData = bytes.subarray(dataStart, dataEnd);
-      try {
-        if (compressionMethod === 0) {
-          // Stored (uncompressed)
-          entries.push({
-            name: fileName,
-            content: decoder.decode(compressedData)
-          });
-        } else if (compressionMethod === 8 && typeof DecompressionStream !== 'undefined') {
-          // Deflate-raw
-          const ds = new DecompressionStream('deflate-raw');
-          const writer = ds.writable.getWriter();
-          writer.write(compressedData);
-          writer.close();
-          const decompressedBuffer = await new Response(ds.readable).arrayBuffer();
-          entries.push({
-            name: fileName,
-            content: decoder.decode(decompressedBuffer)
-          });
-        }
-      } catch {
-        // Ignore individual corrupt entry and continue
-      }
-    }
-
-    offset = dataEnd;
+  const centralDirectory = readZipCentralDirectory(buffer);
+  if (centralDirectory.length === 0) {
+    return extractZipTextEntriesFromLocalHeaders(buffer, fileFilter);
   }
 
+  const entries: Array<{ name: string; content: string }> = [];
+  for (const entry of centralDirectory) {
+    if (!fileFilter(entry.name)) continue;
+    try {
+      entries.push({ name: entry.name, content: await readZipEntryContent(buffer, entry) });
+    } catch (error) {
+      if (error instanceof ZipUnsupportedError) throw error;
+      // Ignore a corrupt entry and keep reading the archive.
+    }
+  }
   return entries;
+}
+
+function normalizeZipPath(path: string): string {
+  let normalized = String(path || '').trim().replace(/\\/g, '/');
+  try {
+    normalized = decodeURIComponent(normalized);
+  } catch {
+    // Keep the raw href when it is not valid percent-encoding.
+  }
+  return normalized
+    .replace(/^\.\//, '')
+    .replace(/\/{2,}/g, '/')
+    .toLowerCase();
+}
+
+function resolveZipHref(basePath: string, href: string): string {
+  const cleanHref = String(href || '').split('#')[0];
+  const baseDir = basePath.includes('/') ? basePath.slice(0, basePath.lastIndexOf('/') + 1) : '';
+  const combined = cleanHref.startsWith('/') ? cleanHref.slice(1) : `${baseDir}${cleanHref}`;
+
+  const parts: string[] = [];
+  for (const segment of combined.split('/')) {
+    if (!segment || segment === '.') continue;
+    if (segment === '..') parts.pop();
+    else parts.push(segment);
+  }
+  return parts.join('/');
+}
+
+function extractXmlAttribute(tag: string, attribute: string): string | null {
+  const match = tag.match(new RegExp(`\\b${attribute}\\s*=\\s*("([^"]*)"|'([^']*)')`, 'i'));
+  if (!match) return null;
+  return match[2] ?? match[3] ?? null;
+}
+
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&#(\d+);/g, (_m, code) => String.fromCharCode(Number(code)));
+}
+
+/** Reads the EPUB spine (OPF) so chapters keep the book order, not the file name order. */
+function parseOpfSpineHrefs(opfXml: string, opfPath: string): string[] {
+  const manifest = new Map<string, string>();
+
+  const itemTagRegex = /<item\b[^>]*>/gi;
+  let tagMatch: RegExpExecArray | null;
+  while ((tagMatch = itemTagRegex.exec(opfXml)) !== null) {
+    const id = extractXmlAttribute(tagMatch[0], 'id');
+    const href = extractXmlAttribute(tagMatch[0], 'href');
+    if (id && href) {
+      manifest.set(id, resolveZipHref(opfPath, decodeXmlEntities(href)));
+    }
+  }
+
+  const spine: string[] = [];
+  const itemrefRegex = /<itemref\b[^>]*>/gi;
+  while ((tagMatch = itemrefRegex.exec(opfXml)) !== null) {
+    const idref = extractXmlAttribute(tagMatch[0], 'idref');
+    const href = idref ? manifest.get(idref) : undefined;
+    if (href) spine.push(normalizeZipPath(href));
+  }
+
+  return spine;
+}
+
+function zipEntryNames(buffer: ArrayBuffer): string[] {
+  return readZipCentralDirectory(buffer).map(entry => entry.name);
+}
+
+async function readZipTextFile(buffer: ArrayBuffer, targetName: string): Promise<string | null> {
+  const normalizedTarget = normalizeZipPath(targetName);
+  const centralDirectory = readZipCentralDirectory(buffer);
+
+  if (centralDirectory.length > 0) {
+    const entry = centralDirectory.find(
+      candidate => normalizeZipPath(candidate.name) === normalizedTarget
+    );
+    return entry ? readZipEntryContent(buffer, entry) : null;
+  }
+
+  const entries = await extractZipTextEntriesFromLocalHeaders(
+    buffer,
+    name => normalizeZipPath(name) === normalizedTarget
+  );
+  return entries[0]?.content ?? null;
+}
+
+/**
+ * Extract readable text from an .epub E-Book ArrayBuffer
+ */
+async function extractEpubText(buffer: ArrayBuffer): Promise<string> {
+  let opfPath: string | null = null;
+
+  try {
+    const containerXml = await readZipTextFile(buffer, 'META-INF/container.xml');
+    if (containerXml) {
+      const rootfileTag = containerXml.match(/<rootfile\b[^>]*>/i);
+      const fullPath = rootfileTag ? extractXmlAttribute(rootfileTag[0], 'full-path') : null;
+      if (fullPath) opfPath = normalizeZipPath(fullPath);
+    }
+  } catch (error) {
+    if (error instanceof ZipUnsupportedError) throw error;
+  }
+
+  if (!opfPath) {
+    opfPath = zipEntryNames(buffer).find(name => /\.opf$/i.test(name)) ?? null;
+  }
+
+  let spineHrefs: string[] = [];
+  if (opfPath) {
+    try {
+      const opfXml = await readZipTextFile(buffer, opfPath);
+      if (opfXml) spineHrefs = parseOpfSpineHrefs(opfXml, opfPath);
+    } catch (error) {
+      if (error instanceof ZipUnsupportedError) throw error;
+    }
+  }
+
+  const chapters = await extractZipTextEntries(
+    buffer,
+    name => /\.(xhtml|html|htm)$/i.test(name) && !/(nav|toc|cover)\.(xhtml|html|htm)$/i.test(name)
+  );
+
+  if (chapters.length === 0) {
+    throw new Error('Nenhum capítulo legível encontrado no arquivo EPUB.');
+  }
+
+  const byPath = new Map<string, { name: string; content: string }>();
+  for (const chapter of chapters) {
+    byPath.set(normalizeZipPath(chapter.name), chapter);
+  }
+
+  const ordered: Array<{ name: string; content: string }> = [];
+  for (const href of spineHrefs) {
+    const chapter = byPath.get(href);
+    if (chapter) {
+      ordered.push(chapter);
+      byPath.delete(href);
+    }
+  }
+
+  // Chapters missing from the spine keep a stable, numeric-aware order.
+  const leftovers = Array.from(byPath.values()).sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+  );
+  ordered.push(...leftovers);
+
+  const chapterTexts = ordered
+    .map(entry => extractTextFromHtml(entry.content))
+    .filter(text => text.length > 0);
+
+  return chapterTexts.join(' ').replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -349,31 +907,15 @@ async function extractDocxText(buffer: ArrayBuffer): Promise<string> {
     .replace(/<\/w:p>/gi, '\n')
     .replace(/<w:tab\/>/gi, ' ')
     .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
     .split('\n')
     .map(p => p.replace(/\s+/g, ' ').trim())
     .filter(p => p.length >= 5)
     .map(p => (/[.!?]$/.test(p) ? p : `${p}.`));
 
   return paragraphs.join(' ');
-}
-
-/**
- * Extract readable text from an .epub E-Book ArrayBuffer
- */
-async function extractEpubText(buffer: ArrayBuffer): Promise<string> {
-  const entries = await extractZipTextEntries(buffer, name =>
-    /\.(xhtml|html|htm)$/i.test(name) && !/(nav|toc|cover)\.(xhtml|html|htm)$/i.test(name)
-  );
-
-  if (entries.length === 0) {
-    throw new Error('Nenhum capítulo legível encontrado no arquivo EPUB.');
-  }
-
-  // Sort chapters alphabetically so chapter1, chapter2 stay in order
-  entries.sort((a, b) => a.name.localeCompare(b.name));
-
-  const chapterTexts = entries.map(entry => extractTextFromHtml(entry.content));
-  return chapterTexts.join(' ').replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -401,8 +943,7 @@ async function extractPdfText(
     throw new Error('Biblioteca PDF.js não disponível.');
   }
 
-  win.pdfjsLib.GlobalWorkerOptions.workerSrc =
-    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  win.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
 
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await win.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -428,6 +969,33 @@ async function extractPdfText(
 }
 
 /**
+ * Decodes a file as text. Returns null when the bytes look binary so an
+ * unsupported format (.doc, .mobi, .xls…) never becomes a garbage book.
+ */
+function decodePlainTextBuffer(buffer: ArrayBuffer): string | null {
+  const bytes = new Uint8Array(buffer);
+
+  if (bytes.length >= 2) {
+    if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+      return new TextDecoder('utf-16le').decode(bytes.subarray(2));
+    }
+    if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+      return new TextDecoder('utf-16be').decode(bytes.subarray(2));
+    }
+  }
+
+  const sample = bytes.subarray(0, Math.min(bytes.length, 4096));
+  let controlBytes = 0;
+  for (const byte of sample) {
+    if (byte === 0) return null;
+    if (byte < 0x09 || (byte > 0x0d && byte < 0x20) || byte === 0x7f) controlBytes += 1;
+  }
+  if (sample.length > 0 && controlBytes / sample.length > 0.02) return null;
+
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
+/**
  * Universal file parser supporting PDF, EPUB, DOCX, TXT, MD, SRT, VTT, HTML, CSV, TSV, JSON, RTF
  */
 export async function parseUploadedStudyFile(
@@ -436,13 +1004,13 @@ export async function parseUploadedStudyFile(
 ): Promise<ParsedBookResult> {
   const fileName = file.name || 'Documento Importado';
   const extMatch = fileName.toLowerCase().match(/\.([a-z0-9]+)$/);
-  const ext = extMatch ? extMatch[1] : 'txt';
+  const ext = extMatch ? extMatch[1] : '';
   const baseTitle = fileName.replace(/\.[^/.]+$/, '');
 
-  onProgress?.(`Lendo arquivo .${ext.toUpperCase()}...`);
+  onProgress?.(`Lendo arquivo .${(ext || 'txt').toUpperCase()}...`);
 
   let sentences: Sentence[] = [];
-  let formatLabel = ext.toUpperCase();
+  let formatLabel = (ext || 'txt').toUpperCase();
 
   if (ext === 'pdf') {
     formatLabel = 'PDF Importado';
@@ -463,41 +1031,48 @@ export async function parseUploadedStudyFile(
     sentences = segmentBookText(text);
   } else if (ext === 'srt' || ext === 'vtt') {
     formatLabel = `Legenda (${ext.toUpperCase()})`;
-    const raw = await file.text();
+    const raw = stripBom(await file.text());
     onProgress?.('Limpando timestamps e tags da legenda...');
     const text = cleanSubtitleText(raw);
     sentences = segmentBookText(text);
   } else if (ext === 'md' || ext === 'markdown') {
     formatLabel = 'Artigo Markdown';
-    const raw = await file.text();
+    const raw = stripBom(await file.text());
     onProgress?.('Processando formatação Markdown...');
     const text = cleanMarkdownText(raw);
     sentences = segmentBookText(text);
   } else if (ext === 'html' || ext === 'htm') {
     formatLabel = 'Página / Artigo HTML';
-    const raw = await file.text();
+    const raw = stripBom(await file.text());
     onProgress?.('Extraindo artigo do HTML...');
     const text = extractTextFromHtml(raw);
     sentences = segmentBookText(text);
   } else if (ext === 'csv' || ext === 'tsv') {
     formatLabel = `Lista (${ext.toUpperCase()})`;
-    const raw = await file.text();
+    const raw = stripBom(await file.text());
     onProgress?.('Importando sentenças da planilha...');
     sentences = parseCsvOrTsvSentences(raw, ext === 'tsv' ? '\t' : ',');
   } else if (ext === 'json') {
     formatLabel = 'Arquivo JSON';
-    const raw = await file.text();
+    const raw = stripBom(await file.text());
     onProgress?.('Importando sentenças do JSON...');
     sentences = parseJsonSentences(raw);
   } else if (ext === 'rtf') {
     formatLabel = 'Documento RTF';
-    const raw = await file.text();
+    // RTF escapes are ASCII, but raw CP1252 bytes still appear in older files.
+    const buffer = await file.arrayBuffer();
+    const raw = new TextDecoder('windows-1252').decode(buffer);
     const text = cleanRtfText(raw);
     sentences = segmentBookText(text);
   } else {
-    // Default: .txt or any plain text format
-    formatLabel = 'Texto (.TXT)';
-    const raw = await file.text();
+    formatLabel = ext === '' ? 'Texto (.TXT)' : `Texto (.${ext.toUpperCase()})`;
+    const buffer = await file.arrayBuffer();
+    const raw = decodePlainTextBuffer(buffer);
+    if (raw === null) {
+      throw new Error(
+        `Formato ".${ext}" não suportado. ${SUPPORTED_FORMATS_MESSAGE}`
+      );
+    }
     onProgress?.('Segmentando sentenças do texto...');
     sentences = segmentBookText(raw);
   }

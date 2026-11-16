@@ -261,6 +261,30 @@ test('classifySyncDecision accurately distinguishes first upload, auto pull/push
   );
 });
 
+test('mergeDriveSnapshots is deterministic and keeps the newest input timestamp', () => {
+  const local = makeSnapshot({ updatedAt: '2026-11-14T10:00:00.000Z' });
+  const remote = makeSnapshot({ updatedAt: '2026-11-15T10:00:00.000Z', activeBookId: 'remote_book' });
+
+  const first = mergeDriveSnapshots(local, remote);
+  const second = mergeDriveSnapshots(local, remote);
+
+  assert.equal(first.updatedAt, '2026-11-15T10:00:00.000Z');
+  assert.equal(first.updatedAt, second.updatedAt);
+  assert.deepEqual(first, second);
+});
+
+test('computeSnapshotFingerprint ignores settings key order', () => {
+  const baseSettings = { ...DEFAULT_SETTINGS };
+  const reordered = Object.fromEntries(
+    Object.entries(baseSettings).reverse()
+  ) as typeof baseSettings;
+
+  const snapA = makeSnapshot({ settings: baseSettings });
+  const snapB = makeSnapshot({ settings: reordered });
+
+  assert.equal(computeSnapshotFingerprint(snapA), computeSnapshotFingerprint(snapB));
+});
+
 test('parseDriveBackupSnapshot validates schema version and rejects corrupted payloads', () => {
   assert.equal(parseDriveBackupSnapshot(null), null);
   assert.equal(parseDriveBackupSnapshot({ version: 99 }), null);

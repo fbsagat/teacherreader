@@ -120,12 +120,46 @@ test('concatenateWavBase64 merges PCM payloads cleanly with updated RIFF and dat
 
   const wav1 = makeWav([1, 2, 3, 4]);
   const wav2 = makeWav([5, 6, 7, 8, 9, 10]);
-  const merged = Buffer.from(concatenateWavBase64([wav1, wav2]), 'base64');
+  const mergedB64 = concatenateWavBase64([wav1, wav2]);
+  assert.ok(mergedB64);
+  const merged = Buffer.from(mergedB64, 'base64');
 
   assert.equal(merged.toString('ascii', 0, 4), 'RIFF');
   assert.equal(merged.readUInt32LE(4), 36 + 10);
   assert.equal(merged.readUInt32LE(40), 10);
   assert.deepEqual(Array.from(merged.subarray(44)), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+});
+
+test('concatenateWavBase64 refuses partial audio when any clip lacks a RIFF header', () => {
+  const makeWav = (pcmBytes: number[]) => {
+    const buf = Buffer.alloc(44 + pcmBytes.length);
+    buf.write('RIFF', 0);
+    buf.writeUInt32LE(36 + pcmBytes.length, 4);
+    buf.write('WAVE', 8);
+    buf.write('fmt ', 12);
+    buf.writeUInt32LE(16, 16);
+    buf.writeUInt16LE(1, 20);
+    buf.writeUInt16LE(1, 22);
+    buf.writeUInt32LE(24000, 24);
+    buf.writeUInt32LE(48000, 28);
+    buf.writeUInt16LE(2, 32);
+    buf.writeUInt16LE(16, 34);
+    buf.write('data', 36);
+    buf.writeUInt32LE(pcmBytes.length, 40);
+    Buffer.from(pcmBytes).copy(buf, 44);
+    return buf.toString('base64');
+  };
+
+  const validWav = makeWav([1, 2, 3, 4]);
+  const rawPcmWithoutHeader = Buffer.from([9, 9, 9, 9, 9, 9]).toString('base64');
+
+  // First clip invalid: previously returned only the first clip (partial audio).
+  assert.equal(concatenateWavBase64([rawPcmWithoutHeader, validWav]), null);
+  // Later clip invalid: previously skipped 44 arbitrary bytes and served corrupted audio.
+  assert.equal(concatenateWavBase64([validWav, rawPcmWithoutHeader]), null);
+
+  // A single clip is passed through untouched (the model may return one part only).
+  assert.equal(concatenateWavBase64([validWav]), validWav);
 });
 
 test('shouldTreatBrowserUtteranceAsFinished ignores brief mid-sentence pauses and requires sustained idle after minimum reading duration', () => {
@@ -165,6 +199,18 @@ test('shouldTreatBrowserUtteranceAsFinished ignores brief mid-sentence pauses an
     }),
     true
   );
+});
+
+test('splitTextIntoTtsChunks guards invalid limits and hard-splits a giant token', () => {
+  // NaN/<=0 used to produce NaN comparisons and one chunk per word.
+  assert.deepEqual(splitTextIntoTtsChunks('Hello there', Number.NaN), ['Hello there']);
+  assert.deepEqual(splitTextIntoTtsChunks('Hello there', 0), ['Hello there']);
+
+  const giantToken = 'a'.repeat(500);
+  const chunks = splitTextIntoTtsChunks(giantToken, 100);
+  assert.ok(chunks.length >= 5);
+  assert.ok(chunks.every(chunk => chunk.length <= 100));
+  assert.equal(chunks.join(''), giantToken);
 });
 
 test('splitTextIntoTtsChunks rebalances single-word trailing tails on slightly oversized clauses', () => {

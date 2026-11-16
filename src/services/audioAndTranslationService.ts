@@ -945,7 +945,6 @@ async function requestServerNeuralTtsAudio(params: {
   provider: 'gemini_tts' | 'online';
   voiceName: string;
   voiceStyle: string;
-  playbackRate: number;
   cacheEnabled: boolean;
   cacheKey: string;
   isBackground?: boolean;
@@ -957,7 +956,6 @@ async function requestServerNeuralTtsAudio(params: {
     provider,
     voiceName,
     voiceStyle,
-    playbackRate,
     cacheEnabled,
     cacheKey,
     isBackground = false,
@@ -1020,8 +1018,7 @@ async function requestServerNeuralTtsAudio(params: {
           lang,
           provider,
           voiceName,
-          voiceStyle,
-          speed: playbackRate
+          voiceStyle
         }),
         signal: controller.signal
       });
@@ -1151,7 +1148,6 @@ async function playServerNeuralTts(
     provider,
     voiceName,
     voiceStyle,
-    playbackRate,
     cacheEnabled,
     cacheKey,
     isBackground: false
@@ -1205,7 +1201,6 @@ export async function prefetchTtsAudio(
     provider,
     voiceName,
     voiceStyle,
-    playbackRate,
     cacheEnabled: true,
     cacheKey,
     isBackground: true,

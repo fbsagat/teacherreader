@@ -9,8 +9,17 @@ import {
   extractSentenceWordsForMatching,
   isSuspiciousMyMemoryFragment,
   parseGoogleGtxWordResponse,
-  sanitizeLiteralPtTranslation
+  sanitizeLiteralPtTranslation,
+  normalizeEnglishChallengeToken
 } from './matchingPairs';
+
+test('normalizeEnglishChallengeToken strips accents instead of deleting the whole word', () => {
+  assert.equal(normalizeEnglishChallengeToken('Café'), 'cafe');
+  assert.equal(normalizeEnglishChallengeToken('naïve'), 'naive');
+  // Typographic apostrophes survive as the ASCII form used by contractions.
+  assert.equal(normalizeEnglishChallengeToken('don’t'), "don't");
+  assert.equal(normalizeEnglishChallengeToken('  "Hello!"  '), 'hello');
+});
 
 test('isSuspiciousMyMemoryFragment rejects noisy TM fragments like "director" -> "de arte"', () => {
   assert.equal(isSuspiciousMyMemoryFragment('director', 'de arte', 0.99), true);

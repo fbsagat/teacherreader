@@ -69,7 +69,7 @@ segmentBookText('Yes!')                   → 0 sentenças
 Objetivo: o app não deve mais dar nota falsa, perder texto no import, contar
 dia errado nem continuar gravando áudio.
 
-### [ ] 1.1 Nota de pronúncia aprova palavras erradas (crítico)
+### [x] 1.1 Nota de pronúncia aprova palavras erradas (crítico)
 - Onde: `src/utils/shadowing.ts:310-397` (grupos de homófonos, `isWordMatch`,
   `calculateSimilarity`), `src/utils/challengeFlow.ts:73-84`.
 - Evidência: `isWordMatch('right','nine')`, `('do','so')`, `('thought','taught')`
@@ -89,7 +89,7 @@ dia errado nem continuar gravando áudio.
 - Aceite: testes de regressão para `right/nine`, `do/so`, `in/point`, `art/part`,
   `''`/alvo vazio; nenhuma nota ≥ 92 sem correspondência real.
 
-### [ ] 1.2 Import descarta sentenças longas e muito curtas (alto)
+### [x] 1.2 Import descarta sentenças longas e muito curtas (alto)
 - Onde: `src/utils/shadowing.ts:698-736` (gate `restored.length > 10 && < 420`).
 - Evidência: frase de 500 chars → `[]`; `'Yes!'` → `[]`. Afeta todos os imports
   (`fileParsers.ts:451-502`, `LibraryModal.tsx:117`).
@@ -99,7 +99,7 @@ dia errado nem continuar gravando áudio.
 - Aceite: testes com 400/500/800 chars, frase curta de 1 palavra e texto sem
   pontuação final; soma das palavras do resultado == entrada (sem perda).
 
-### [ ] 1.3 Hands-free concede 100% sem fala (alto)
+### [x] 1.3 Hands-free concede 100% sem fala (alto)
 - Onde: `src/App.tsx:1714-1718` (`resolve(targetSentence)` em erro de mic com
   `autoHandsFree`), `src/components/OverlaysAndModals.tsx:175-181` (auto-envio
   da própria frase-alvo após 1,1 s).
@@ -109,7 +109,7 @@ dia errado nem continuar gravando áudio.
   pausa/retry; marcar submissões assistidas para **não** gravar progresso.
 - Aceite: teste de fluxo garantindo que submissão assistida não altera stats.
 
-### [ ] 1.4 “Dia” é UTC → meta, streak e gráfico errados no Brasil (alto)
+### [x] 1.4 “Dia” é UTC → meta, streak e gráfico errados no Brasil (alto)
 - Onde: `src/services/storageService.ts:403`,
   `src/components/StatsModal.tsx:103,124,171`,
   `src/components/VocabModal.tsx:57` (nome do arquivo exportado).
@@ -120,7 +120,7 @@ dia errado nem continuar gravando áudio.
   locais, zero-padded), usado nos 4 pontos.
 - Aceite: teste com `TZ=America/Sao_Paulo` e data fixa às 22h.
 
-### [ ] 1.5 Microfone pode continuar gravando após o fim da captura (alto/privacidade)
+### [x] 1.5 Microfone pode continuar gravando após o fim da captura (alto/privacidade)
 - Onde: `src/App.tsx:1174-1229`.
 - Causa: `await getUserMedia()` resolve depois de `stopVoiceRecordingAndAnalyser()`
   e o stream é atribuído mesmo assim (`recorder.start()` sem dono). Também
@@ -131,7 +131,7 @@ dia errado nem continuar gravando áudio.
 - Aceite: teste manual (negar permissão durante a captura, navegar de frase
   durante a captura) sem indicador de gravação aceso.
 
-### [ ] 1.6 Ciclo de vida de áudio: AudioContext vazando e re-render de 90 ms (alto)
+### [x] 1.6 Ciclo de vida de áudio: AudioContext vazando e re-render de 90 ms (alto)
 - Onde: `src/App.tsx:1188-1203` (`new AudioCtx()` por captura, nunca `close()`),
   `:1198-1202` (`setMicVolumeLevel` a cada 90 ms re-renderiza o App inteiro).
 - Correção: `audioCtxRef`/`analyserRef` reutilizados e `await ctx.close()` no
@@ -139,7 +139,7 @@ dia errado nem continuar gravando áudio.
 - Aceite: durante captura, o App não re-renderiza a 11 Hz; abrir/fechar 10
   capturas seguidas não estoura o limite de AudioContext do Chrome.
 
-### [ ] 1.7 Promise do desafio pode ficar pendurada ou resolver duas vezes (alto)
+### [x] 1.7 Promise do desafio pode ficar pendurada ou resolver duas vezes (alto)
 - Onde: `src/App.tsx:1967-1986` (resolver sem flag `settled`),
   `:2760` (`jumpToSentence`) e `:4086` (chip de etapa) anulam
   `postSentenceChallengeRequest` sem resolver, `:3876-3878` (Escape) e `:6566`
@@ -152,7 +152,7 @@ dia errado nem continuar gravando áudio.
 - Aceite: teste em `studyFlowLifecycle` cobrindo resolve único e navegação
   durante o desafio.
 
-### [ ] 1.8 Restauração de sessão frágil (alto)
+### [x] 1.8 Restauração de sessão frágil (alto)
 - Onde: `src/App.tsx:936-1005`.
 - Causa A: o efeito de bookmark (`:998-1005`) grava **síncronamente**
   `sr_active_book_id` com o livro demo (`SAMPLE_BOOKS[0]`) antes de
@@ -163,16 +163,16 @@ dia errado nem continuar gravando áudio.
   restauração terminar; só cair no demo quando `getActive()` voltar vazio.
 - Aceite: reload com livro próprio abre o livro próprio e a frase salva.
 
-### [ ] 1.9 Fechamento da fase 1
-- [ ] rodar lint + testes + build
-- [ ] atualizar `todo.md` marcando o que foi feito
-- [ ] commit: `Pronúncia/Import/Sessão: correções de pontuação, segmentação e restauração`
+### [x] 1.9 Fechamento da fase 1
+- [x] rodar lint + testes + build
+- [x] atualizar `todo.md` marcando o que foi feito
+- [x] commit: `Pronúncia/Import/Sessão: correções de pontuação, segmentação e restauração`
 
 ---
 
 # Fase 2 — Confiabilidade de dados, servidor e acessibilidade (P1)
 
-### [ ] 2.1 Normalizar settings na fronteira (alto)
+### [x] 2.1 Normalizar settings na fronteira (alto)
 - Onde: `src/services/storageService.ts:244-336` (só `fontSizeScale` é
   normalizado), `src/utils/driveSync.ts:140` (`settings as PedagogicalSettings`).
 - Sintomas: `threshold: NaN` (nada aprova para sempre), `threshold: 0`,
@@ -185,7 +185,7 @@ dia errado nem continuar gravando áudio.
 - Usar em `loadSavedSettings` **e** `parseDriveBackupSnapshot`.
 - Aceite: testes com payloads hostis (NaN, negativos, strings, array vazio).
 
-### [ ] 2.2 Reconcile do Drive re-dispara a cada frase (alto)
+### [x] 2.2 Reconcile do Drive re-dispara a cada frase (alto)
 - Onde: `src/App.tsx:832-852` + `583-684` + `505-514`.
 - Causa: efeito de auth depende de `reconcileWithGoogleDrive`, que depende de
   `exportCurrentDriveSnapshot`, que depende de `currentIndex` e `settings`. Cada
@@ -196,7 +196,7 @@ dia errado nem continuar gravando áudio.
 - Aceite: com Drive conectado, avançar 10 frases não dispara novas chamadas de
   list/download; modal não reabre sozinho.
 
-### [ ] 2.3 Tirar efeitos colaterais dos updaters de `setState` (alto)
+### [x] 2.3 Tirar efeitos colaterais dos updaters de `setState` (alto)
 - Onde (6 pontos): `App.tsx:1896-1924` (`setSentenceProgress` → `updateBookmark`
   com transação IDB; `setStudyStats` → `recordEvaluation` grava localStorage),
   `:1104-1133` (`handleUpdateSettings` persiste e mexe em `settingsRef` dentro
@@ -209,7 +209,7 @@ dia errado nem continuar gravando áudio.
   imediata).
 - Aceite: nenhum `localStorage`/IndexedDB dentro de updater; grep de revisão.
 
-### [ ] 2.4 Erros de persistência e import engolidos (alto)
+### [x] 2.4 Erros de persistência e import engolidos (alto)
 - Onde: `App.tsx:3813-3845` (`handleUploadBook`), `:3778-3811` (`handleSelectBook`),
   `:3849-3856` (`handleDeleteSavedBook`).
 - Sintomas: muta o prop (`newBook.sentences[0].pt = …`); `await
@@ -221,7 +221,7 @@ dia errado nem continuar gravando áudio.
 - Aceite: importar com rede bloqueada carrega o livro; simular quota cheia
   mostra erro em pt-BR (e não o toast de sucesso).
 
-### [ ] 2.5 Resetar estado local dos modais ao abrir (alto)
+### [x] 2.5 Resetar estado local dos modais ao abrir (alto)
 - Onde: `GoogleDriveSyncModal.tsx:113-114` (`confirmOverwriteWarning` e
   `confirmDeleteBackup` continuam armados entre aberturas → 1 toque sobrescreve
   o backup), `LibraryModal.tsx:59-66` (aba/texto/erro velhos), `:585-589` (input
@@ -235,7 +235,7 @@ dia errado nem continuar gravando áudio.
   confirmação destrutiva pré-armada.
 
 ### [ ] 2.6 Acessibilidade — bloco de correções (alto)
-- [ ] **2.6a** Remover `select-none` do `<body>` (`index.html:17`) e aplicar só
+- [x] **2.6a** Remover `select-none` do `<body>` (`index.html:17`) e aplicar só
   em chrome/overlays (já feito em `OverlaysAndModals.tsx:23`). Hoje só a linha EN
   dos cards é copiável (`App.tsx:5755`); texto em modo parágrafo
   (`:4978-5003`, `:5055-5060`), dicionário, vocab, navegador e biblioteca não.
@@ -243,20 +243,20 @@ dia errado nem continuar gravando áudio.
   `aria-labelledby`, foco inicial, trap de Tab, restauração de foco ao fechar,
   slot `aria-live`. Migrar os 11 componentes (hoje: 0 `autoFocus`, 0
   `aria-controls`, 0 `role="tabpanel"`).
-- [ ] **2.6c** `role="status" aria-live="polite"` no `#stateBadge`/`#scoreBadge`
+- [x] **2.6c** `role="status" aria-live="polite"` no `#stateBadge`/`#scoreBadge`
   (`App.tsx:4407-4414`, `:6057-6066`) e `assertive` para erro; contador do blind
   (`:5612-5616`, `:5694-5700`) também.
-- [ ] **2.6d** Escape fecha só o modal do topo (hoje `App.tsx:3861-3880` fecha
+- [x] **2.6d** Escape fecha só o modal do topo (hoje `App.tsx:3861-3880` fecha
   todos, inclusive empilhados como Dicionário sobre Estatísticas).
-- [ ] **2.6e** Aumentar alvos de toque: `HeaderBar.tsx:132-254`
+- [x] **2.6e** Aumentar alvos de toque: `HeaderBar.tsx:132-254`
   (`min-w-[34px]` → 44 px no mobile), `VocabModal.tsx:280,317`,
   `LibraryModal.tsx:530`.
-- [ ] **2.6f** Contraste: `text-slate-500` em 9–10 px dá ~3,97:1 no tema escuro
+- [x] **2.6f** Contraste: `text-slate-500` em 9–10 px dá ~3,97:1 no tema escuro
   (`StatsModal.tsx:388,413,438,641`, `VocabModal.tsx:310,317`,
   `SettingsModal.tsx:2203`, `GoogleDriveSyncModal.tsx:456`,
   `SentenceNavigatorModal.tsx:219`) → usar `text-slate-400` abaixo de `text-sm`
   e escurecer `--color-slate-500` nos temas claro/sépia.
-- [ ] **2.6g** Rótulos acessíveis em botões só-ícone (`SettingsModal.tsx:709-748`,
+- [x] **2.6g** Rótulos acessíveis em botões só-ícone (`SettingsModal.tsx:709-748`,
   setas/🔁/✕) e foco visível no preset radio
   (`SettingsModal.tsx:599-613`, hoje `opacity-0` sem ring).
 - Aceite: navegação completa por teclado; leitor de tela anuncia resultado e
@@ -266,119 +266,119 @@ dia errado nem continuar gravando áudio.
 - [ ] **2.7a** Remover a duplicação de `blindMaxErrorsBeforeReveal` e
   `blindSpeakingOnFullSentence` (`SettingsModal.tsx:823-915` e `:1580-1689`),
   extraindo um `<BlindSpeakingControls>` renderizado uma vez.
-- [ ] **2.7b** “Restaurar Padrões” (`SettingsModal.tsx:2158-2197`) omite
+- [x] **2.7b** “Restaurar Padrões” (`SettingsModal.tsx:2158-2197`) omite
   `themeMode`, `studyViewMode`, `showConnectedSpeech`, `dailyGoalSentences`,
   `practiceDaysGoal` → usar `DEFAULT_SETTINGS` completo (ou separar “Áudio/Fala”
   de “Tudo”).
-- [ ] **2.7c** “Salvar e Fechar” (`:2208`) não salva nada (persistência é
+- [x] **2.7c** “Salvar e Fechar” (`:2208`) não salva nada (persistência é
   imediata) e não há Cancelar → renomear para “Fechar” ou implementar cancelar
   de verdade.
-- [ ] **2.7d** Toast de voz mostra `voiceURI` (`:1317-1324`, `:1347-1354`) →
+- [x] **2.7d** Toast de voz mostra `voiceURI` (`:1317-1324`, `:1347-1354`) →
   mostrar `name (lang)`.
 
-### [ ] 2.8 Servidor: deadline, limites e semântica de erro (alto)
+### [x] 2.8 Servidor: deadline, limites e semântica de erro (alto)
 Arquivo: `server.ts` (referências do commit atual).
-- [ ] **2.8a** `express.json({ limit: '15mb' })` (`:511`) roda antes dos rate
+- [x] **2.8a** `express.json({ limit: '15mb' })` (`:511`) roda antes dos rate
   limits (`:530-531`, `:544`, `:610`) → montar limiter antes do body parser e
   reduzir limite de TTS/STT para poucas centenas de KB.
-- [ ] **2.8b** Nenhum timeout/abort nas chamadas Gemini (`:650-669`, `:679-744`):
+- [x] **2.8b** Nenhum timeout/abort nas chamadas Gemini (`:650-669`, `:679-744`):
   cliente desiste em 7,5–14,5 s e o servidor segue queimando cota. Criar
   `AbortController` por request ligado a `req.on('close')`, passar
   `config.abortSignal` e usar orçamento abaixo do timeout do cliente; teto para
   a fila do semáforo (503 quando cheia).
-- [ ] **2.8c** Rate limiter: map sem teto (`:461-465`) → LRU/FIFO com cap +
+- [x] **2.8c** Rate limiter: map sem teto (`:461-465`) → LRU/FIFO com cap +
   varredura periódica com `.unref()`; chave IPv6 normalizada para /64;
   documentar/validar `trust proxy 1` (`:510`).
-- [ ] **2.8d** Semântica de erro: 429 do Gemini vira 500 no STT (`:756-759`);
+- [x] **2.8d** Semântica de erro: 429 do Gemini vira 500 no STT (`:756-759`);
   devolver 429/503 com `Retry-After` derivado dos cooldowns; 500 só para bug
   real. TTS `:600-602` idem.
-- [ ] **2.8e** Truncamento silencioso: `text.trim().slice(0, 1500)` (`:559`)
+- [x] **2.8e** Truncamento silencioso: `text.trim().slice(0, 1500)` (`:559`)
   usando literal, enquanto `MAX_TTS_TEXT_CHARS` (`:18`) não é usado → rejeitar
   com 400 em pt-BR ou devolver `truncated: true`.
-- [ ] **2.8f** Recomeço da cadeia: falha de 1 chunk no modelo principal refaz
+- [x] **2.8f** Recomeço da cadeia: falha de 1 chunk no modelo principal refaz
   todos os chunks no lite (`:265-293`) → memoizar por índice de chunk.
-- [ ] **2.8g** Circuit breaker só abre com 429 (`:296-298`) → adicionar breaker
+- [x] **2.8g** Circuit breaker só abre com 429 (`:296-298`) → adicionar breaker
   por falhas consecutivas (ex.: 3 em 60 s → pausa 90 s).
-- [ ] **2.8h** `provider: 'online'` pode servir voz TikTok e repetir GTX que
+- [x] **2.8h** `provider: 'online'` pode servir voz TikTok e repetir GTX que
   acabou de falhar (`:563-594`) → para `online`: GTX → neural, sem repetir.
-- [ ] **2.8i** `concatenateWavBase64` pode devolver áudio parcial marcado como
+- [x] **2.8i** `concatenateWavBase64` pode devolver áudio parcial marcado como
   `gemini_tts` (`src/utils/ttsPlayback.ts:342-345`) → retornar `null`/erro e
   deixar a cadeia de fallback decidir (regra “nunca servir áudio parcial”).
-- [ ] **2.8j** STT: validar base64 (decodificar, remover prefixo `data:`),
+- [x] **2.8j** STT: validar base64 (decodificar, remover prefixo `data:`),
   sniff de magic bytes, alinhar a mensagem de 413 (diz 6 MB, guarda 8 MB de
   base64, `:625-630`), aceitar `audio/x-m4a`, `audio/aac`, `audio/3gpp`,
   `video/webm`.
-- [ ] **2.8k** `targetSentence` interpolado cru no prompt (`:663`, `:692`) →
+- [x] **2.8k** `targetSentence` interpolado cru no prompt (`:663`, `:692`) →
   passar como parte separada/JSON com delimitador fixo.
-- [ ] **2.8l** Coach: `JSON.parse` sem try (`:746`), defaults 85 sem clamp
+- [x] **2.8l** Coach: `JSON.parse` sem try (`:746`), defaults 85 sem clamp
   (`:749-751`) → try/catch com 503 e clamp 0–100; `transcript` vazio = falha.
-- [ ] **2.8m** Looks de protótipo em string do usuário: `STYLE_RATE_MULTIPLIER[voiceStyle]`
+- [x] **2.8m** Looks de protótipo em string do usuário: `STYLE_RATE_MULTIPLIER[voiceStyle]`
   (`:560`), `NEURAL_CLOUD_PERSONA_*[voiceName]` (`:259`, `:344-345`) →
   `Object.hasOwn`/Map + allowlist explícita.
-- [ ] **2.8n** Error middleware não é o último (`:767-786` antes de `:819-826`) →
+- [x] **2.8n** Error middleware não é o último (`:767-786` antes de `:819-826`) →
   mover para o fim; `startServer()` sem `.catch` (`:836`); `Vary` via `res.vary`
   (`:518`); logs sem corpo e sem chave.
-- [ ] **2.8o** Limpeza: `MAX_TTS_TEXT_CHARS` morto, `provider` aceito e ignorado
+- [x] **2.8o** Limpeza: `MAX_TTS_TEXT_CHARS` morto, `provider` aceito e ignorado
   no STT (`:616`), `speed` enviado pelo cliente e nunca lido, `styleMultiplier`
   devolvido e nunca consumido, `googleStream: true` hardcoded (`:538`).
 - Aceite: `/api/voice-hub/status` continua igual; testes existentes verdes;
   adicionar teste de `concatenateWavBase64` com clip sem RIFF.
 
-### [ ] 2.9 Parser de arquivos e cobertura (médio)
-- [ ] **2.9a** Criar `src/utils/fileParsers.test.ts` (módulo é puro e testável em
+### [x] 2.9 Parser de arquivos e cobertura (médio)
+- [x] **2.9a** Criar `src/utils/fileParsers.test.ts` (módulo é puro e testável em
   Node): JSON malformado, CRLF, CSV com campos entre aspas e vírgulas, RTF com
   `\'e9`, HTML, EPUB/DOCX sem `DecompressionStream`.
-- [ ] **2.9b** `JSON.parse` sem guarda (`fileParsers.ts:231`) vaza
+- [x] **2.9b** `JSON.parse` sem guarda (`fileParsers.ts:231`) vaza
   `SyntaxError` em inglês → try/catch com mensagem pt-BR.
-- [ ] **2.9c** RTF: `\'e9` vira espaço (`:191-202`) e o toggle de aspas quebra
+- [x] **2.9c** RTF: `\'e9` vira espaço (`:191-202`) e o toggle de aspas quebra
   `""` e células multilinha → decodificar CP1252 e usar máquina de estados.
-- [ ] **2.9d** ZIP/DOCX/EPUB: continuar em vez de abortar no data descriptor
+- [x] **2.9d** ZIP/DOCX/EPUB: continuar em vez de abortar no data descriptor
   (`:295`), `await writer.write()` (`:315`), erro pt-BR para navegador sem
   `DecompressionStream` (`:311`), ordenar capítulos pelo *spine* do OPF
   (`META-INF/container.xml`) em vez do nome do arquivo (`:373`).
-- [ ] **2.9e** Extensões desconhecidas (`.doc`, `.mobi`, `.azw3`, `.xls`) caem no
+- [x] **2.9e** Extensões desconhecidas (`.doc`, `.mobi`, `.azw3`, `.xls`) caem no
   branch de texto puro e geram livro binário (`:497-503`) → erro “formato não
   suportado” em pt-BR.
-- [ ] **2.9f** Modo Página: `App.tsx:348-351` zera `extraLoadedStagesCount` a
+- [x] **2.9f** Modo Página: `App.tsx:348-351` zera `extraLoadedStagesCount` a
   cada substituição de `sentences` (o prefetch traduz e colapsa a paginação) →
   resetar só em troca de livro.
-- [ ] **2.9g** `fileParsers.ts:404-406` duplica versão/URL do pdf.js do
+- [x] **2.9g** `fileParsers.ts:404-406` duplica versão/URL do pdf.js do
   `index.html:15` → centralizar constante.
 - Aceite: suite nova verde; nenhum caminho de import lança mensagem em inglês.
 
-### [ ] 2.10 Robustez de utilitários (médio)
-- [ ] **2.10a** `cleanString` apaga acento em vez de normalizar
+### [x] 2.10 Robustez de utilitários (médio)
+- [x] **2.10a** `cleanString` apaga acento em vez de normalizar
   (`shadowing.ts:16-19`, `matchingPairs.ts:53-59`) → NFD + strip
   `\u0300-\u036f`; alinhar com `normalizePtWord` (`shadowing.ts:1868`).
-- [ ] **2.10b** Apóstrofo curvo quebra contratação no STT mobile
+- [x] **2.10b** Apóstrofo curvo quebra contratação no STT mobile
   (`shadowing.ts:292-303`) → normalizar `[’‘`´]` → `'` em `cleanSpeech` e
   `normalizeSpokenTranscriptNumbers`.
-- [ ] **2.10c** `alignPortugueseClauses` duplica a frase PT inteira quando
+- [x] **2.10c** `alignPortugueseClauses` duplica a frase PT inteira quando
   `P <= M` (`shadowing.ts:1951-1953`, fallback `:2244`) → distribuir
   proporcionalmente ou devolver vazio; testar `P == M` e `P < M`.
-- [ ] **2.10d** Precedência em `isContentWord` (`shadowing.ts:1985`) →
+- [x] **2.10d** Precedência em `isContentWord` (`shadowing.ts:1985`) →
   `!EN_NON_FINAL_WORDS.has(cleanEn) && cleanEn.length >= 3`.
-- [ ] **2.10e** `mergeDriveSnapshots` usa `Date.now()` (`driveSync.ts:405`) →
+- [x] **2.10e** `mergeDriveSnapshots` usa `Date.now()` (`driveSync.ts:405`) →
   determinístico (`max(local, remote)`), com o bump feito no ponto de escrita.
-- [ ] **2.10f** Fingerprint sensível à ordem das chaves de `settings`
+- [x] **2.10f** Fingerprint sensível à ordem das chaves de `settings`
   (`driveSync.ts:185-193`) → canonicalizar (chaves ordenadas/allowlist); hoje
   dois aparelhos idênticos podem entrar em “confirmar mesclagem” para sempre.
-- [ ] **2.10g** Merge de stats por `Math.max` (`driveSync.ts:374-396`) perde
+- [x] **2.10g** Merge de stats por `Math.max` (`driveSync.ts:374-396`) perde
   dados de dois aparelhos no mesmo dia → decidir e documentar (somar deltas por
   device/sessão, ou assumir max-wins explicitamente).
-- [ ] **2.10h** `splitTextIntoTtsChunks` sem guarda de `maxChunkChars`
+- [x] **2.10h** `splitTextIntoTtsChunks` sem guarda de `maxChunkChars`
   (`ttsPlayback.ts:175-176`) → default quando `NaN`/≤0 e hard-split de token
   gigante (hoje `NaN` gera 1 chunk por palavra).
-- [ ] **2.10i** Regra de “máximo efetivo” do blind duplicada em 3 lugares
+- [x] **2.10i** Regra de “máximo efetivo” do blind duplicada em 3 lugares
   (`voiceCompatibility.ts:145-148`, `shadowing.ts:2740-2750`, `App.tsx:3185-3212`)
   → uma função exportada e testada; `getHandsFreeEffectiveMaxAttempts` hoje é
   morta.
-- [ ] **2.10j** Duas fórmulas de velocidade (`shadowing.ts:494-503` clamp
+- [x] **2.10j** Duas fórmulas de velocidade (`shadowing.ts:494-503` clamp
   0,6–1,8 vs `voiceCompatibility.ts:30-53` 0,72–1,5) → browser TTS chega a 1,8x
   e cloud a 1,5x com o mesmo ajuste; unificar.
-- [ ] **2.10k** `isVocabDueForReview` com `nextReviewDate` inválido nunca vence
+- [x] **2.10k** `isVocabDueForReview` com `nextReviewDate` inválido nunca vence
   (`shadowing.ts:2636-2639`) → tratar `NaN` como vencido.
-- [ ] **2.10l** `studyFlowLifecycle.ts:126` (`Math.floor(NaN)` → `NaN`) e
+- [x] **2.10l** `studyFlowLifecycle.ts:126` (`Math.floor(NaN)` → `NaN`) e
   `calculateSimilarity('', x) = 100` → guards.
 - Aceite: testes para cada item acima.
 

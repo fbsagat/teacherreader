@@ -107,3 +107,23 @@ test('evaluateWordPronunciation validates exact, phonetic, and empty speech inpu
   assert.equal(ordinalRes.passed, true);
   assert.equal(ordinalRes.trimmedRaw, 'first');
 });
+
+test('evaluateWordPronunciation never approves minimal pairs or substrings', () => {
+  for (const [target, spoken] of [
+    ['right', 'nine'],
+    ['do', 'so'],
+    ['in', 'point'],
+    ['art', 'part'],
+    ['he', 'the'],
+    ['know', 'show'],
+    ['thought', 'taught']
+  ]) {
+    const result = evaluateWordPronunciation(target, spoken);
+    assert.equal(result.passed, false, `${target} must not pass as ${spoken}`);
+    assert.ok(result.score < 92, `${target}/${spoken} must not score >= 92`);
+  }
+
+  // Real homophones must still be accepted.
+  const homophone = evaluateWordPronunciation('through', 'threw');
+  assert.equal(homophone.passed, true);
+});

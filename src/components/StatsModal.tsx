@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { StudyStats } from '../types/shadowreader';
 import { getBrazilianPhoneticTip } from '../utils/shadowing';
+import { localDayKey } from '../utils/localTime';
 
 export type StatsTabId = 'goals' | 'achievements' | 'lexicon';
 
@@ -100,7 +101,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({
   const [lexiconView, setLexiconView] = useState<'tricky' | 'mastered'>('tricky');
   const [lexiconPage, setLexiconPage] = useState(0);
 
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = localDayKey();
   const todayEntry = stats.dailyHistory[todayKey] || {
     dateKey: todayKey,
     sentencesPracticed: 0,
@@ -121,7 +122,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({
     for (let i = historyRange - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
+      const key = localDayKey(d);
       const entry = stats.dailyHistory[key];
       const count = entry?.sentencesPracticed || 0;
       const label = d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
@@ -168,7 +169,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({
       for (let i = 0; i < 365; i++) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const key = d.toISOString().slice(0, 10);
+        const key = localDayKey(d);
         const entry = stats.dailyHistory[key];
         const practiced = Boolean(
           entry && (entry.sentencesPracticed > 0 || entry.evaluationsCount > 0)
@@ -385,7 +386,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({
             </span>
             <span
               className={`text-[10px] font-mono tabular-nums shrink-0 ${
-                activeTab === 'goals' ? 'text-brand-100' : 'text-slate-500'
+                activeTab === 'goals' ? 'text-brand-100' : 'text-slate-400'
               }`}
             >
               {dailyPct}%
@@ -410,7 +411,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({
             </span>
             <span
               className={`text-[10px] font-mono tabular-nums shrink-0 ${
-                activeTab === 'achievements' ? 'text-brand-100' : 'text-slate-500'
+                activeTab === 'achievements' ? 'text-brand-100' : 'text-slate-400'
               }`}
             >
               {unlockedCount}/{achievements.length}
@@ -435,7 +436,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({
             </span>
             <span
               className={`text-[10px] font-mono tabular-nums shrink-0 ${
-                activeTab === 'lexicon' ? 'text-brand-100' : 'text-slate-500'
+                activeTab === 'lexicon' ? 'text-brand-100' : 'text-slate-400'
               }`}
             >
               {stats.masteredWords.length}
@@ -638,7 +639,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({
                       </div>
                       <span
                         className={`text-[9px] truncate max-w-full tabular-nums ${
-                          isToday ? 'font-bold text-emerald-400' : 'text-slate-500'
+                          isToday ? 'font-bold text-emerald-400' : 'text-slate-400'
                         }`}
                       >
                         {showLabel ? (historyRange === 30 ? day.shortDate.slice(0, 2) : day.label) : '·'}

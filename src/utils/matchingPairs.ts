@@ -52,7 +52,10 @@ const PT_DANGLING_PREFIX_RE = /^(de|do|da|dos|das|em|no|na|nos|nas|para|por|com|
  */
 export function normalizeEnglishChallengeToken(raw: string): string {
   return (raw || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/[\u2018\u2019\u02BC\u00B4]/g, "'")
     .replace(/[^a-z0-9']/g, '')
     .replace(/^'+|'+$/g, '')
     .trim();
