@@ -347,8 +347,6 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                         onClose();
                       }}
                       className={`p-3 rounded-xl border ${
-                        isMasterpiece ? 'sm:col-span-2 lg:col-span-3' : ''
-                      } ${
                         isActive
                           ? 'border-brand-500/70 bg-brand-500/10 ring-1 ring-brand-500/40'
                           : isMasterpiece
@@ -388,11 +386,8 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                           {b.author}
                         </p>
                         {isMasterpiece && (
-                          <p className="text-[10px] text-amber-200/90 mt-1 leading-relaxed">
-                            Romance, mistério e drama em Boston (EUA) dividido em 5 Atos (do A1 ao C1):
-                            começa com as palavras e frases mais fáceis e usadas no dia a dia americano
-                            e avança progressivamente até estruturas avançadas, com nota gramatical em
-                            cada frase.
+                          <p className="text-[10px] text-amber-200/90 mt-1 leading-snug">
+                            Romance, mistério e drama em Boston (EUA) em 5 Atos, do A1 ao C1.
                           </p>
                         )}
                       </div>

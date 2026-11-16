@@ -1358,6 +1358,13 @@ export default function App() {
           (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
         if (!SpeechRecognitionClass) {
+          // Hands-Free must never fill in the target text by itself: without speech
+          // recognition we report "no speech" so the engine keeps the exercise open
+          // (retry / model pronunciation) instead of marking it as solved.
+          if (settingsRef.current.autoHandsFree) {
+            resolve('');
+            return;
+          }
           let settledFallback = false;
           const finishFallback = (val: string) => {
             if (settledFallback) return;
@@ -1713,7 +1720,9 @@ export default function App() {
             }
             if (settingsRef.current.autoHandsFree) {
               handsFreeAutoFallbackTimer = window.setTimeout(() => {
-                resolve(targetSentence);
+                // Never resolve with the target text here: that would auto-solve the
+                // exercise. Empty text is treated as "no speech captured" by the engine.
+                resolve('');
               }, 550);
               return;
             }
@@ -1783,6 +1792,12 @@ export default function App() {
           clearRecognitionHandlers();
           if (recognitionRef.current === recognition) {
             recognitionRef.current = null;
+          }
+          // Hands-Free keeps running without a manual fallback dialog: report no speech
+          // instead of pre-filling the target text (which would auto-solve the exercise).
+          if (settingsRef.current.autoHandsFree) {
+            resolve('');
+            return;
           }
           let settledFallback = false;
           const finishFallback = (val: string) => {
@@ -4261,7 +4276,6 @@ export default function App() {
         themeMode={settings.themeMode || 'dark'}
         driveSyncStatus={driveSyncStatus}
         onCycleTheme={handleCycleTheme}
-        onEnterPocketMode={handleEnterPocketMode}
         onOpenDonateCoffee={() => {
           stopLoop();
           setIsDonateModalOpen(true);
@@ -6523,9 +6537,6 @@ export default function App() {
           isStepByStepMode && activeStudyStep && activeStudyStep.ptText
             ? activeStudyStep.ptText
             : currentSentence?.pt || ''
-        }
-        autoHandsFree={
-          settings.autoHandsFree && (isPlayingLoop || Boolean(postSentenceChallengeRequest))
         }
         onSubmitSpeech={val => {
           fallbackCancelledByUserRef.current = false;

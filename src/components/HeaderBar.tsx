@@ -11,7 +11,6 @@ interface HeaderBarProps {
   themeMode: ThemeMode;
   driveSyncStatus?: DriveSyncUiStatus;
   onCycleTheme: () => void;
-  onEnterPocketMode: () => void;
   onOpenDonateCoffee: () => void;
   onOpenDriveSync: () => void;
   onOpenStats: () => void;
@@ -27,7 +26,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   themeMode,
   driveSyncStatus = 'disconnected',
   onCycleTheme,
-  onEnterPocketMode,
   onOpenDonateCoffee,
   onOpenDriveSync,
   onOpenStats,
@@ -100,26 +98,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           <CoffeeCupIcon className="w-3.5 h-3.5 shrink-0" />
           <span className="hidden lg:inline">Pagar um café</span>
           <span className="lg:hidden">Apoiar</span>
-        </button>
-
-        {/* Pocket Mode Trigger (Tablet/Desktop header; mobile has quick access in main study bar) */}
-        <button
-          id="btnPocketMode"
-          type="button"
-          onClick={onEnterPocketMode}
-          aria-label="Modo Bolso"
-          title="Modo Bolso (Tela Apagada com Áudio Contínuo)"
-          className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-[11px] font-semibold text-emerald-400 border border-slate-700/80 transition whitespace-nowrap shrink-0 cursor-pointer"
-        >
-          <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"
-            />
-          </svg>
-          <span className="hidden lg:inline">Modo Bolso</span>
         </button>
 
         {/* Theme Switcher (Icon-only on narrow mobile, full label on sm+) */}

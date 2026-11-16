@@ -1042,14 +1042,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* Top Status & Cache Bar */}
               <div
                 id="voiceHubStatusBanner"
-                className="flex flex-wrap items-center justify-between gap-2 bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2"
+                className="flex items-center gap-2 bg-slate-950/80 border border-slate-800 rounded-xl px-2.5 py-1 overflow-hidden"
               >
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] font-bold text-slate-300 mr-1">
-                    Motores Ativos:
-                  </span>
+                <span className="text-[10px] font-bold text-slate-300 shrink-0">
+                  Motores Ativos:
+                </span>
+                <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto no-scrollbar whitespace-nowrap">
                   <span
-                    className={`px-2 py-0.5 rounded-md border text-[10px] font-bold ${
+                    className={`shrink-0 px-2 py-0.5 rounded-md border text-[10px] font-bold ${
                       providerStatus.gemini
                         ? 'bg-brand-500/15 border-brand-500/40 text-brand-200'
                         : 'bg-slate-900 border-slate-800 text-slate-400'
@@ -1057,16 +1057,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   >
                     ✨ Gemini Neural & Coach {providerStatus.gemini ? '· Ativo' : ''}
                   </span>
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 text-[10px] font-bold">
+                  <span className="shrink-0 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 text-[10px] font-bold">
                     ✓ Vozes do Sistema ({enVoices.length} EN · {ptVoices.length} PT)
                   </span>
-                  <span className="px-2 py-0.5 rounded-md bg-sky-500/15 border border-sky-500/35 text-sky-200 text-[10px] font-semibold">
+                  <span className="shrink-0 px-2 py-0.5 rounded-md bg-sky-500/15 border border-sky-500/35 text-sky-200 text-[10px] font-semibold">
                     ☁️ Google Cloud Stream · Gratuito
                   </span>
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <label className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-900 border border-slate-800 text-[10px] text-slate-300 cursor-pointer">
+                  <label className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-800 text-[10px] text-slate-300 cursor-pointer whitespace-nowrap">
                     <input
                       type="checkbox"
                       id="cfgTtsCacheEnabled"
@@ -1091,7 +1091,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       setCachedAudioCount(0);
                       onShowToast('🧹 Cache de áudio limpo com sucesso!');
                     }}
-                    className="px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] text-slate-300 hover:text-white transition cursor-pointer"
+                    className="px-2 py-0.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] text-slate-300 hover:text-white transition cursor-pointer whitespace-nowrap"
                   >
                     🧹 Limpar
                   </button>
@@ -1544,14 +1544,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* Synced Banner with Central de Voz e IA */}
               <div
                 id="voiceRulesSyncBanner"
-                className="flex flex-wrap items-center justify-between gap-2 bg-slate-950/85 border border-indigo-500/30 rounded-xl px-3 py-2"
+                className="flex items-center gap-2 bg-slate-950/85 border border-indigo-500/30 rounded-xl px-2.5 py-1 overflow-hidden"
               >
-                <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-                  <span className="font-bold text-indigo-200">🎙️ Conectado à Central:</span>
-                  <span className="px-2 py-0.5 rounded-md bg-brand-500/15 border border-brand-500/35 text-brand-200 font-semibold">
+                <span className="font-bold text-indigo-200 text-[10px] shrink-0">
+                  🎙️ Conectado à Central:
+                </span>
+                <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto no-scrollbar whitespace-nowrap text-[10px]">
+                  <span className="shrink-0 px-2 py-0.5 rounded-md bg-brand-500/15 border border-brand-500/35 text-brand-200 font-semibold">
                     🔊 {voiceCompat.ttsEngineLabel} · {voiceCompat.ttsVoiceDetail}
                   </span>
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/35 text-emerald-200 font-semibold">
+                  <span className="shrink-0 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/35 text-emerald-200 font-semibold">
                     🎤 {voiceCompat.sttProviderLabel} · Rigor {voiceCompat.sttStrictnessLabel}
                   </span>
                 </div>
@@ -1559,7 +1561,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   id="btnGoToVoiceAiHubFromRules"
                   type="button"
                   onClick={() => setActiveTab('voice_ai_hub')}
-                  className="px-2 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/35 border border-indigo-400/40 text-indigo-100 text-[10px] font-bold cursor-pointer transition shrink-0"
+                  className="px-2 py-0.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/35 border border-indigo-400/40 text-indigo-100 text-[10px] font-bold cursor-pointer transition shrink-0 whitespace-nowrap"
                 >
                   🎙️ Central de Voz & IA →
                 </button>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 
 interface PocketModeOverlayProps {
   isOpen: boolean;
@@ -156,7 +156,6 @@ interface FallbackSpeechModalProps {
   targetSentence: string;
   hideEnglishText?: boolean;
   ptHint?: string;
-  autoHandsFree?: boolean;
   onSubmitSpeech: (spokenText: string) => void;
   onClose: () => void;
 }
@@ -166,19 +165,10 @@ export const FallbackSpeechModal: React.FC<FallbackSpeechModalProps> = ({
   targetSentence,
   hideEnglishText = false,
   ptHint,
-  autoHandsFree = false,
   onSubmitSpeech,
   onClose
 }) => {
   const [inputVal, setInputVal] = useState('');
-
-  useEffect(() => {
-    if (!isOpen || !autoHandsFree || inputVal.trim().length > 0) return;
-    const timer = window.setTimeout(() => {
-      onSubmitSpeech(targetSentence);
-    }, 1100);
-    return () => window.clearTimeout(timer);
-  }, [isOpen, autoHandsFree, inputVal, targetSentence, onSubmitSpeech]);
 
   if (!isOpen) return null;
 
@@ -217,14 +207,6 @@ export const FallbackSpeechModal: React.FC<FallbackSpeechModalProps> = ({
             ✕
           </button>
         </div>
-        {autoHandsFree && (
-          <div
-            id="fallbackHandsFreeNotice"
-            className="mt-2 px-2.5 py-1.5 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold animate-pulse"
-          >
-            🙌 Mãos Livres Ativo: validando e avançando automaticamente...
-          </div>
-        )}
         <p className="text-xs text-slate-400 mt-2">
           {hideEnglishText
             ? '🧠 Etapa Sem Ler o Inglês: produza a fala em inglês guiando-se apenas pela tradução em português abaixo:'

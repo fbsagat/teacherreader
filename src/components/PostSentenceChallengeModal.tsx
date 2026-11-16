@@ -1117,9 +1117,20 @@ export const PostSentenceChallengeModal: React.FC<PostSentenceChallengeModalProp
 
               <div className="flex flex-wrap items-center justify-center gap-2 text-xs">
                 <span className="font-mono text-slate-400">{activePronWord.ipa}</span>
-                <span className="text-slate-600">·</span>
-                <span className="font-semibold text-amber-300">
-                  Tradução: "{activePronWord.pt}"
+              </div>
+
+              {/* Translation is the memory anchor: render it large and high-contrast */}
+              <div className="flex justify-center pt-0.5">
+                <span
+                  id="challengeWordTranslation"
+                  className="inline-flex flex-wrap items-baseline justify-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500/15 border border-amber-400/50 shadow-sm shadow-amber-500/10"
+                >
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300/80">
+                    Tradução
+                  </span>
+                  <span className="text-lg sm:text-xl font-extrabold text-amber-200 leading-tight">
+                    {activePronWord.pt}
+                  </span>
                 </span>
               </div>
 
