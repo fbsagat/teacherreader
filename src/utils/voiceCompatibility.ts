@@ -14,7 +14,24 @@ export interface EffectiveTtsRateParams {
   ttsSpeedPt: number;
   geminiVoiceStyle?: GeminiVoiceStyle;
   speedMultiplier?: number;
+  /**
+   * Explicit playback rate that wins over the user speed and the clarity floor.
+   * Used by the dedicated slow-listening step, whose whole purpose is to be
+   * audibly slower than normal playback.
+   */
+  absoluteRate?: number;
 }
+
+/**
+ * Absolute playback rate for the "Ouvir EN 0.6x" step. Deliberately below the
+ * automatic clarity floor (0.72x) because a slow step that sounds the same as
+ * normal playback is useless.
+ */
+export const EN_SLOW_PLAYBACK_RATE = 0.6;
+
+/** Absolute playback rate range accepted by browsers' HTMLAudioElement. */
+export const MIN_ABSOLUTE_PLAYBACK_RATE = 0.5;
+export const MAX_ABSOLUTE_PLAYBACK_RATE = 1.5;
 
 export const GEMINI_STYLE_RATE_FACTORS: Record<GeminiVoiceStyle, number> = {
   clear_teacher: 0.98,
@@ -34,11 +51,24 @@ export function computeEffectiveTtsRate({
   ttsSpeedEn,
   ttsSpeedPt,
   geminiVoiceStyle = 'clear_teacher',
-  speedMultiplier = 1.0
+  speedMultiplier = 1.0,
+  absoluteRate
 }: EffectiveTtsRateParams): number {
+  if (
+    typeof absoluteRate === 'number' &&
+    Number.isFinite(absoluteRate) &&
+    absoluteRate > 0
+  ) {
+    const clamped = Math.min(
+      MAX_ABSOLUTE_PLAYBACK_RATE,
+      Math.max(MIN_ABSOLUTE_PLAYBACK_RATE, absoluteRate)
+    );
+    return Number(clamped.toFixed(2));
+  }
+
   const isPt = lang.toLowerCase().startsWith('pt');
   const userBaseRate = isPt ? ttsSpeedPt : ttsSpeedEn;
-  const safeBase = Number.isFinite(userBaseRate) ? userBaseRate : isPt ? 1.15 : 0.85;
+  const safeBase = Number.isFinite(userBaseRate) ? userBaseRate : isPt ? 1.35 : 0.7;
   const safeMult = Number.isFinite(speedMultiplier) && speedMultiplier > 0 ? speedMultiplier : 1.0;
 
   const styleFactor =

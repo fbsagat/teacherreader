@@ -579,7 +579,8 @@ export function getEffectiveSpeed(
   lang: string,
   ttsSpeedEn: number,
   ttsSpeedPt: number,
-  speedMultiplier = 1.0
+  speedMultiplier = 1.0,
+  absoluteRate?: number
 ): number {
   // Same clamped range used for cloud playback so browser and neural voices
   // never drift apart (1.8x was unintelligible and 0.6x distorted).
@@ -588,7 +589,8 @@ export function getEffectiveSpeed(
     ttsEngine: 'browser_custom',
     ttsSpeedEn,
     ttsSpeedPt,
-    speedMultiplier
+    speedMultiplier,
+    absoluteRate
   });
 }
 

@@ -7,6 +7,7 @@ import {
   SUPPORTED_FORMATS_BADGES
 } from '../utils/fileParsers';
 import { segmentBookText } from '../utils/shadowing';
+import { computeBookProgress } from '../utils/bookProgress';
 import { ShadowRepository } from '../services/storageService';
 
 export type LibraryTabId = 'catalog' | 'saved' | 'upload';
@@ -347,7 +348,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
 
               {/* Books Grid */}
               <div
-                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5"
+                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 auto-rows-fr gap-2.5"
                 id="sampleBooksList"
               >
                 {filteredSampleBooks.map(b => {
@@ -375,44 +376,42 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                           : isMasterpiece
                             ? 'border-amber-500/50 bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-slate-950/80 hover:border-amber-400'
                             : 'border-slate-800 bg-slate-950/60 hover:bg-slate-800/70 hover:border-slate-700'
-                      } cursor-pointer transition flex flex-col justify-between gap-2`}
+                      } cursor-pointer transition flex flex-col justify-between gap-2 h-full`}
                     >
-                      <div>
-                        <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {isMasterpiece && (
-                              <span className="text-[9px] font-extrabold px-2 py-0.5 rounded bg-amber-500 text-slate-950 uppercase tracking-wider">
-                                ⭐ Obra-Prima Autoral
-                              </span>
-                            )}
+                      <div className="min-w-0">
+                        <div className="flex items-center justify-between gap-1.5 mb-1 h-5 overflow-hidden">
+                          <div className="flex items-center gap-1.5 min-w-0">
                             {b.cefrLevel && (
                               <span
-                                className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${levelStyle}`}
+                                title={
+                                  isMasterpiece
+                                    ? 'A1 → A2 → B1 → B2 → C1 · Progressivo — Romance, mistério e drama em Boston (EUA) em 5 Atos, do A1 ao C1.'
+                                    : `${b.cefrLevel} · ${b.difficultyLabel}`
+                                }
+                                className={`text-[9px] font-bold px-1.5 py-0.5 rounded border whitespace-nowrap truncate ${levelStyle}`}
                               >
                                 {isMasterpiece
-                                  ? 'A1 → A2 → B1 → B2 → C1 · Progressivo'
+                                  ? '⭐ A1→C1 · Progressivo'
                                   : `${b.cefrLevel} · ${b.difficultyLabel}`}
                               </span>
                             )}
                           </div>
                           {b.lengthCategory && (
-                            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300">
-                              {b.lengthCategory} ({b.sentences.length} frases)
+                            <span
+                              title={`${b.sentences.length} frases`}
+                              className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 whitespace-nowrap shrink-0"
+                            >
+                              {b.lengthCategory} ({b.sentences.length})
                             </span>
                           )}
                         </div>
 
-                        <h5 className="text-xs sm:text-sm font-bold text-white leading-snug">
+                        <h5 className="text-xs sm:text-sm font-bold text-white leading-snug line-clamp-2 min-h-[34px] sm:min-h-[38px]">
                           {b.title}
                         </h5>
-                        <p className="text-[10px] sm:text-[11px] text-slate-300 mt-0.5">
+                        <p className="text-[10px] sm:text-[11px] text-slate-300 mt-0.5 truncate">
                           {b.author}
                         </p>
-                        {isMasterpiece && (
-                          <p className="text-[10px] text-amber-200/90 mt-1 leading-snug">
-                            Romance, mistério e drama em Boston (EUA) em 5 Atos, do A1 ao C1.
-                          </p>
-                        )}
                       </div>
 
                       <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-800/80">
@@ -484,7 +483,8 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                     const isCurrent = b.id === currentBookId;
                     const curIdx = b.currentIndex || 0;
                     const total = b.totalSentences || b.sentences.length || 1;
-                    const pct = b.progressPercent || Math.round(((curIdx + 1) / total) * 100);
+                    const progress = computeBookProgress(total, b.sentenceProgress);
+                    const pct = progress.percent;
                     const lastDate = b.lastRead
                       ? new Date(b.lastRead).toLocaleDateString('pt-BR', {
                           day: '2-digit',
@@ -514,11 +514,18 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-400 tabular-nums">
-                            <span className="text-emerald-400 font-medium">
-                              Sentença {curIdx + 1} de {total} ({pct}%)
+                          <div className="flex items-start gap-x-2 gap-y-0.5 mt-1 text-[10px] text-slate-400 tabular-nums flex-wrap">
+                            <span
+                              className="text-emerald-400 font-medium"
+                              title="Progresso conta apenas frases realmente dominadas (fala final da frase inteira aprovada). A posição de leitura aparece separada."
+                            >
+                              {progress.completedCount} de {total} frases dominadas ({pct}%)
                             </span>
-                            <span>·</span>
+                            <span aria-hidden="true">·</span>
+                            <span title="Onde você parou de ler — usado pelo botão Continuar">
+                              Você está na sentença {curIdx + 1}
+                            </span>
+                            <span aria-hidden="true">·</span>
                             <span>Lido em {lastDate}</span>
                           </div>
                           <div className="w-full bg-slate-800 rounded-full h-1 mt-1.5 overflow-hidden">

@@ -185,6 +185,11 @@ test('mergeDriveSnapshots combines books, sentence progress, vocab, and study st
   assert.equal(shared.sentenceProgress?.[1].completed, true);
   assert.equal(shared.sentenceProgress?.[1].bestScore, 95);
   assert.equal(shared.sentenceProgress?.[2].completed, true);
+  // Progress is mastery-based (3 of 4 sentences completed after the merge = 75%),
+  // never the reading position (index 3 of 4 would be 100%).
+  assert.equal(shared.progressPercent, 75);
+  const soloRemote = merged.books.find(b => b.id === 'book_remote_2')!;
+  assert.equal(soloRemote.progressPercent, 0);
 
   assert.equal(merged.vocab.length, 2);
   const resilient = merged.vocab.find(v => v.word === 'resilient')!;

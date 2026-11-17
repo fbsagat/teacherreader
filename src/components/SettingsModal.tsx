@@ -34,7 +34,7 @@ import {
 } from '../services/audioAndTranslationService';
 import { getVoiceCompatibilitySummary } from '../utils/voiceCompatibility';
 
-export type SettingsTabId = 'models' | 'custom_cards' | 'voice_ai_hub' | 'voice_theme';
+export type SettingsTabId = 'presets' | 'steps' | 'voice_ai' | 'text_theme';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -142,7 +142,7 @@ const STT_PROVIDER_OPTIONS: {
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
-  initialTab = 'models',
+  initialTab = 'presets',
   settings,
   onUpdateSettings,
   onClose,
@@ -396,38 +396,56 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const hasChallengeStepInSeq = activeSequence.some(c => isChallengeStepCard(c));
   const voiceCompat = getVoiceCompatibilitySummary(settings);
 
+  // Cooldown do Gemini TTS (a cota do free tier é ~10 pedidos/dia). Veio do
+  // /api/voice-hub/status em epoch ms; comparamos com o relógio do servidor.
+  const cooldown = providerStatus.cooldowns;
+  const geminiTtsCooldownEndsAt =
+    cooldown?.geminiTtsUntil && cooldown.geminiTtsUntil > (cooldown.serverNow ?? 0)
+      ? cooldown.geminiTtsUntil
+      : null;
+  const geminiTtsCooldownLabel = geminiTtsCooldownEndsAt
+    ? new Date(geminiTtsCooldownEndsAt).toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    : null;
+
   const TABS: {
     id: SettingsTabId;
     domId: string;
+    panelId: string;
     label: string;
     icon: string;
     badge?: string;
   }[] = [
     {
-      id: 'models',
-      domId: 'tabSettingsModels',
-      label: 'Modelos',
+      id: 'presets',
+      domId: 'tabSettingsPresets',
+      panelId: 'tabPanelPresets',
+      label: 'Presets',
       icon: '★',
       badge: settings.audioFlow !== 'custom' ? 'Ativo' : undefined
     },
     {
-      id: 'custom_cards',
-      domId: 'tabSettingsCustomCards',
+      id: 'steps',
+      domId: 'tabSettingsSteps',
+      panelId: 'customCardOrderBuilder',
       label: 'Etapas',
       icon: '🎛️',
       badge: `${activeSequence.length}`
     },
     {
-      id: 'voice_ai_hub',
-      domId: 'tabSettingsVoiceAiHub',
+      id: 'voice_ai',
+      domId: 'tabSettingsVoiceAi',
+      panelId: 'tabPanelVoiceAi',
       label: 'Voz & IA',
-      icon: '🎙️',
-      badge: 'Novo'
+      icon: '🎙️'
     },
     {
-      id: 'voice_theme',
-      domId: 'tabSettingsVoice',
-      label: 'Texto, Tema & Regras',
+      id: 'text_theme',
+      domId: 'tabSettingsTextTheme',
+      panelId: 'tabPanelTextTheme',
+      label: 'Texto & Tema',
       icon: '🎨'
     }
   ];
@@ -464,7 +482,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="settingsModalTitle"
-        className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl lg:max-w-3xl xl:max-w-[880px] w-full p-4 sm:p-5 max-h-[92dvh] flex flex-col overflow-hidden shadow-2xl"
+        className="bg-slate-900 border border-slate-800 rounded-2xl w-[min(1120px,95vw)] h-[min(820px,92dvh)] p-4 sm:p-5 flex flex-col overflow-hidden shadow-2xl"
       >
         {/* Compact Header */}
         <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-800 shrink-0">
@@ -534,23 +552,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 id={tab.domId}
                 role="tab"
                 aria-selected={isActive}
+                aria-controls={tab.panelId}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`min-h-[40px] px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                className={`min-h-[40px] px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
                   isActive
                     ? 'bg-brand-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/70'
                 }`}
               >
                 <span>{tab.icon}</span>
-                {tab.id === 'voice_theme' ? (
-                  <>
-                    <span className="sm:hidden truncate">Texto &amp; Tema</span>
-                    <span className="hidden sm:inline truncate">{tab.label}</span>
-                  </>
-                ) : (
-                  <span className="truncate">{tab.label}</span>
-                )}
+                <span className="truncate">{tab.label}</span>
                 {tab.badge && (
                   <span
                     className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold ${
@@ -569,9 +581,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Tab Content Panel */}
         <div className="mt-3 flex-1 min-h-0 overflow-y-auto pr-0.5 text-xs">
-          {/* TAB 1: RECOMMENDED MODELS */}
-          {activeTab === 'models' && (
-            <div id="tabPanelModels" className="space-y-2.5">
+          {/* TAB 1: PRESETS */}
+          {activeTab === 'presets' && (
+            <div
+              id="tabPanelPresets"
+              role="tabpanel"
+              aria-labelledby="tabSettingsPresets"
+              className="space-y-2.5"
+            >
               <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2">
                 <div className="text-[10px] text-slate-300 leading-snug">
                   <strong className="text-amber-300">Como funciona:</strong> cada frase segue a{' '}
@@ -584,7 +601,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <button
                   id="btnGoToCustomBuilderTab"
                   type="button"
-                  onClick={() => setActiveTab('custom_cards')}
+                  onClick={() => setActiveTab('steps')}
                   className="text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-brand-600/25 hover:bg-brand-600 border border-brand-500/40 text-brand-200 hover:text-white transition cursor-pointer shrink-0 whitespace-nowrap"
                 >
                   🎛️ Montar Minha Ordem →
@@ -650,8 +667,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           )}
 
           {/* TAB 2: CUSTOM STEP ORDER & VISUAL CARDS BUILDER */}
-          {activeTab === 'custom_cards' && (
-            <div id="customCardOrderBuilder" className="space-y-3">
+          {activeTab === 'steps' && (
+            <div
+              id="customCardOrderBuilder"
+              role="tabpanel"
+              aria-labelledby="tabSettingsSteps"
+              className="space-y-3"
+            >
               {/* Sub-panel A: Step Execution Sequence (Order + Repeat + Add Any Step) */}
               <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-2.5">
                 <div className="flex items-center justify-between gap-2">
@@ -1042,8 +1064,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           )}
 
           {/* TAB 3: MULTI-PROVIDER VOICE & AI HUB */}
-          {activeTab === 'voice_ai_hub' && (
-            <div id="tabPanelVoiceAiHub" className="space-y-3">
+          {activeTab === 'voice_ai' && (
+            <div
+              id="tabPanelVoiceAi"
+              role="tabpanel"
+              aria-labelledby="tabSettingsVoiceAi"
+              className="space-y-3"
+            >
               {/* Top Status & Cache Bar */}
               <div
                 id="voiceHubStatusBanner"
@@ -1055,13 +1082,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto no-scrollbar whitespace-nowrap">
                   <span
                     className={`shrink-0 px-2 py-0.5 rounded-md border text-[10px] font-bold ${
-                      providerStatus.gemini
-                        ? 'bg-brand-500/15 border-brand-500/40 text-brand-200'
-                        : 'bg-slate-900 border-slate-800 text-slate-400'
+                      !providerStatus.gemini
+                        ? 'bg-slate-900 border-slate-800 text-slate-400'
+                        : geminiTtsCooldownLabel
+                          ? 'bg-amber-500/15 border-amber-500/40 text-amber-200'
+                          : 'bg-brand-500/15 border-brand-500/40 text-brand-200'
                     }`}
+                    title={
+                      geminiTtsCooldownLabel
+                        ? 'Cota gratuita do Gemini esgotada; o app está usando a voz neural do TikTok e o Google Tradutor. Volta sozinho quando a cota renovar.'
+                        : 'Gemini disponível para TTS e Coach Fonético'
+                    }
                   >
-                    ✨ Gemini Neural & Coach {providerStatus.gemini ? '· Ativo' : ''}
+                    ✨ Gemini Neural & Coach{' '}
+                    {!providerStatus.gemini
+                      ? '· Sem chave'
+                      : geminiTtsCooldownLabel
+                        ? '· Em pausa'
+                        : '· Ativo'}
                   </span>
+                  {geminiTtsCooldownLabel && (
+                    <span
+                      id="geminiTtsCooldownBadge"
+                      className="shrink-0 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-200/90 text-[10px] font-semibold"
+                    >
+                      ⏸️ TTS do Gemini em pausa até {geminiTtsCooldownLabel}
+                    </span>
+                  )}
                   <span className="shrink-0 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 text-[10px] font-bold">
                     ✓ Vozes do Sistema ({enVoices.length} EN · {ptVoices.length} PT)
                   </span>
@@ -1533,7 +1580,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <button
                         id="btnGoToRulesFromSttHub"
                         type="button"
-                        onClick={() => setActiveTab('voice_theme')}
+                        onClick={() => setActiveTab('text_theme')}
                         className="text-indigo-300 hover:text-indigo-200 font-semibold underline cursor-pointer"
                       >
                         Ajustar Velocidade & Tolerância →
@@ -1546,8 +1593,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           )}
 
           {/* TAB 4: VOICE, RULES & THEME */}
-          {activeTab === 'voice_theme' && (
-            <div id="tabPanelVoiceTheme" className="space-y-3">
+          {activeTab === 'text_theme' && (
+            <div
+              id="tabPanelTextTheme"
+              role="tabpanel"
+              aria-labelledby="tabSettingsTextTheme"
+              className="space-y-3"
+            >
               {/* Synced Banner with Central de Voz e IA */}
               <div
                 id="voiceRulesSyncBanner"
@@ -1567,7 +1619,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <button
                   id="btnGoToVoiceAiHubFromRules"
                   type="button"
-                  onClick={() => setActiveTab('voice_ai_hub')}
+                  onClick={() => setActiveTab('voice_ai')}
                   className="px-2 py-0.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/35 border border-indigo-400/40 text-indigo-100 text-[10px] font-bold cursor-pointer transition shrink-0 whitespace-nowrap"
                 >
                   🎙️ Central de Voz & IA →
@@ -1586,117 +1638,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </span>
                     </div>
 
-                    <div
-                      id="cfgBlindMaxErrorsBox"
-                      className="p-2 rounded-lg bg-teal-950/25 border border-teal-500/30 space-y-2"
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('steps')}
+                      className="w-full text-left p-2 rounded-lg bg-slate-900/70 border border-slate-800 hover:border-teal-500/50 text-[10px] text-slate-300 leading-snug transition cursor-pointer"
                     >
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="text-[11px] font-bold text-teal-200 leading-tight">
-                            🧠 Falar Sem Inglês: revelar texto após errar
-                          </span>
-                          <span
-                            id="cfgBlindMaxErrorsDisplay"
-                            className="text-[10px] font-mono font-bold text-teal-300 bg-teal-500/15 px-1.5 py-0.5 rounded border border-teal-500/30 shrink-0"
-                          >
-                            {(settings.blindMaxErrorsBeforeReveal ?? 2) === 0
-                              ? 'Nunca'
-                              : `${settings.blindMaxErrorsBeforeReveal ?? 2} ${(settings.blindMaxErrorsBeforeReveal ?? 2) === 1 ? 'erro' : 'erros'}`}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 leading-tight">
-                          Se você esquecer a frase na etapa sem ler, o inglês volta a aparecer após:
-                        </p>
-                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 sm:gap-1">
-                          {BLIND_MAX_ERROR_OPTIONS.map(opt => {
-                            const currentVal = settings.blindMaxErrorsBeforeReveal ?? 2;
-                            const isSelected = currentVal === opt.value;
-                            return (
-                              <button
-                                key={`voice-blind-err-${opt.value}`}
-                                id={`btnBlindMaxErrors_${opt.value}`}
-                                type="button"
-                                onClick={() => {
-                                  onUpdateSettings({ blindMaxErrorsBeforeReveal: opt.value });
-                                  onShowToast(
-                                    opt.value === 0
-                                      ? '🧠 Falar Sem Inglês: texto nunca será revelado automaticamente.'
-                                      : `🧠 Falar Sem Inglês: texto será revelado após ${opt.label}.`
-                                  );
-                                }}
-                                className={`min-h-[38px] sm:min-h-0 py-1.5 sm:py-1 rounded-md text-[10px] font-bold border transition cursor-pointer text-center ${
-                                  isSelected
-                                    ? 'bg-teal-600 text-white border-teal-400 shadow-xs'
-                                    : 'bg-slate-900/90 text-slate-300 border-slate-700 hover:border-teal-500/50 hover:text-white'
-                                }`}
-                              >
-                                {opt.shortLabel}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div
-                        id="cfgBlindSpeakingOnFullSentenceBox"
-                        className="pt-2 border-t border-teal-500/25 space-y-1.5"
-                      >
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="text-[11px] font-bold text-teal-200 leading-tight">
-                            🧠 Falar Sem Inglês na Sentença Completa
-                          </span>
-                          <span
-                            id="cfgBlindFullSentenceDisplay"
-                            className="text-[10px] font-mono font-bold text-teal-300 bg-teal-500/15 px-1.5 py-0.5 rounded border border-teal-500/30 shrink-0"
-                          >
-                            {(settings.blindSpeakingOnFullSentence ?? true)
-                              ? 'Ativado'
-                              : 'Só Em Partes'}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-400 leading-tight">
-                          {(settings.blindSpeakingOnFullSentence ?? true)
-                            ? 'Aparece no modo "Em Partes" e também no "Desafio Final: Frase Inteira".'
-                            : 'Aparece apenas no modo "Em Partes" (nas partes divididas da frase).'}
-                        </p>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <button
-                            id="btnBlindFullSentence_false"
-                            type="button"
-                            onClick={() => {
-                              onUpdateSettings({ blindSpeakingOnFullSentence: false });
-                              onShowToast(
-                                '🧠 Falar Sem Inglês: aparecerá apenas no modo "Em Partes" (desativado na frase inteira).'
-                              );
-                            }}
-                            className={`py-1.5 px-2 rounded-md text-[10px] font-bold border transition cursor-pointer text-center ${
-                              (settings.blindSpeakingOnFullSentence ?? true) === false
-                                ? 'bg-teal-600 text-white border-teal-400 shadow-xs'
-                                : 'bg-slate-900/90 text-slate-300 border-slate-700 hover:border-teal-500/50 hover:text-white'
-                            }`}
-                          >
-                            ✂️ Apenas "Em Partes"
-                          </button>
-                          <button
-                            id="btnBlindFullSentence_true"
-                            type="button"
-                            onClick={() => {
-                              onUpdateSettings({ blindSpeakingOnFullSentence: true });
-                              onShowToast(
-                                '🧠 Falar Sem Inglês: ativado também no "Desafio Final: Frase Inteira"!'
-                              );
-                            }}
-                            className={`py-1.5 px-2 rounded-md text-[10px] font-bold border transition cursor-pointer text-center ${
-                              (settings.blindSpeakingOnFullSentence ?? true) === true
-                                ? 'bg-teal-600 text-white border-teal-400 shadow-xs'
-                                : 'bg-slate-900/90 text-slate-300 border-slate-700 hover:border-teal-500/50 hover:text-white'
-                            }`}
-                          >
-                            🏁 Também na Frase Inteira
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+                      🧠 <span className="font-bold text-teal-200">Falar Sem Inglês</span>: o
+                      momento de revelar o texto e o uso na frase inteira ficam na aba{' '}
+                      <span className="font-bold text-white">Etapas</span> →
+                    </button>
 
                     <label className="flex items-center gap-2 p-1.5 rounded-lg bg-slate-900/70 border border-slate-800 text-slate-300 cursor-pointer">
                       <input

@@ -106,6 +106,65 @@ export function getStudyExecutionMode(isPlayingLoop: boolean): StudyExecutionMod
   return isPlayingLoop ? 'training_loop' : 'free';
 }
 
+/** Explicit next action the Free Mode UI must offer after a step is finished. */
+export type FreeModeCta = 'none' | 'next_part' | 'next_sentence' | 'finish_book';
+
+export interface FreeModeCompletionInput {
+  /** True while the guided Training Loop runs — it owns its own sequencing. */
+  isPlayingLoop: boolean;
+  /** Step-by-step ('Em Partes') mode with more than one step for the sentence. */
+  isStepByStepMode: boolean;
+  /** The current study step is a sub-part (not the final full sentence). */
+  isIntermediateSubClause: boolean;
+  /** The current sub-part already passed its final speaking stage. */
+  subPartCompleted: boolean;
+  /** `sentenceProgress[currentIndex].completed` — final full-sentence pass approved. */
+  sentenceCompleted: boolean;
+  hasNextSentence: boolean;
+}
+
+export interface FreeModeCompletionDecision {
+  /**
+   * Only the Training Loop may chain steps by itself. Outside it (Modo Livre) the
+   * user must always ask for the next part/sentence, so nothing moves on its own.
+   */
+  autoAdvance: boolean;
+  /** Explicit call to action the UI has to render next to the state badge. */
+  cta: FreeModeCta;
+}
+
+/**
+ * Decides what happens right after a step finishes.
+ *
+ * Training Loop → `autoAdvance` (unchanged behaviour, handled by `runShadowingStep`).
+ * Free Mode → never advance automatically: finish the sub-part with a "Próxima
+ * parte" CTA, or the sentence with "Próxima sentença"/"Concluir livro".
+ */
+export function resolveFreeModeCompletion(
+  input: FreeModeCompletionInput
+): FreeModeCompletionDecision {
+  if (input.isPlayingLoop) {
+    return { autoAdvance: true, cta: 'none' };
+  }
+
+  if (
+    input.isStepByStepMode &&
+    input.isIntermediateSubClause &&
+    input.subPartCompleted
+  ) {
+    return { autoAdvance: false, cta: 'next_part' };
+  }
+
+  if (input.sentenceCompleted) {
+    return {
+      autoAdvance: false,
+      cta: input.hasNextSentence ? 'next_sentence' : 'finish_book'
+    };
+  }
+
+  return { autoAdvance: false, cta: 'none' };
+}
+
 export interface StepChipClickDecision {
   /** 'jump_in_active_loop' keeps training running from clickedSeqIdx; 'execute_single_step' runs only that step outside training */
   mode: 'jump_in_active_loop' | 'execute_single_step';

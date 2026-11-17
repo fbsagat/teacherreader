@@ -131,12 +131,17 @@ import {
 import {
   ChallengeOutcome,
   resolveChallengeResolution,
+  resolveFreeModeCompletion,
   resolveLoopButtonMode,
   resolveLoopInterruptionPlan,
   resolveStepChipClickBehavior,
   shouldContinueAsyncStep
 } from './utils/studyFlowLifecycle';
-import { resolveSpeakErrorFeedbackPlan } from './utils/voiceCompatibility';
+import {
+  EN_SLOW_PLAYBACK_RATE,
+  resolveSpeakErrorFeedbackPlan
+} from './utils/voiceCompatibility';
+import { computeBookProgress } from './utils/bookProgress';
 import {
   extractCumulativeTranscriptFromResults,
   MobileStagePanel,
@@ -278,7 +283,7 @@ export default function App() {
 
   // Modals & Overlays State
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTabId>('models');
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTabId>('presets');
   const [isLibraryOpen, setIsLibraryOpen] = useState<boolean>(false);
   const [isVocabOpen, setIsVocabOpen] = useState<boolean>(false);
   const [isStatsOpen, setIsStatsOpen] = useState<boolean>(false);
@@ -521,6 +526,27 @@ export default function App() {
     }, 2600);
   }, []);
 
+  /**
+   * A avaliação com IA é um enriquecimento: quando falha, o app segue com a
+   * avaliação local. Avisa uma vez a cada 60 s para não virar spam de toast.
+   */
+  const sttFailureToastAtRef = useRef<number>(0);
+  const reportSttFailure = useCallback(
+    (failure: { reason: 'timeout' | 'network' | 'http_error' | 'empty_transcript' }) => {
+      const now = Date.now();
+      if (now - sttFailureToastAtRef.current < 60_000) return;
+      sttFailureToastAtRef.current = now;
+      if (failure.reason === 'timeout') {
+        showToast('⏱️ A avaliação com IA demorou demais; usando a avaliação local.');
+      } else if (failure.reason === 'empty_transcript') {
+        showToast('🎙️ A IA não entendeu o áudio; usando a avaliação local.');
+      } else {
+        showToast('⚠️ Não foi possível avaliar com IA agora; usando a avaliação local.');
+      }
+    },
+    [showToast]
+  );
+
   const refreshSavedBooksList = useCallback(async () => {
     const list = await ShadowRepository.books.listAll();
     setSavedBooks(list);
@@ -547,7 +573,7 @@ export default function App() {
       sentences,
       totalSentences: activeTotal,
       currentIndex: validCurIdx,
-      progressPercent: Math.round(((validCurIdx + 1) / activeTotal) * 100),
+      progressPercent: computeBookProgress(activeTotal, sentenceProgress).percent,
       lastRead: new Date().toISOString(),
       sentenceProgress
     };
@@ -1431,7 +1457,12 @@ export default function App() {
 
   // Speak text wrapper
   const speakText = useCallback(
-    async (text: string, lang = 'en-US', speedMultiplier = 1.0): Promise<boolean> => {
+    async (
+      text: string,
+      lang = 'en-US',
+      speedMultiplier = 1.0,
+      absoluteRate?: number
+    ): Promise<boolean> => {
       setIsSpeakingTTS(true);
       const isPt = lang.startsWith('pt');
       setEnginePhase(isPt ? 'PLAYING_PT' : 'PLAYING_EN');
@@ -1453,7 +1484,8 @@ export default function App() {
           preferredVoicePtUri: curSettings.preferredVoicePtUri,
           geminiVoiceName: curSettings.geminiVoiceName,
           geminiVoiceStyle: curSettings.geminiVoiceStyle,
-          ttsCacheEnabled: curSettings.ttsCacheEnabled
+          ttsCacheEnabled: curSettings.ttsCacheEnabled,
+          absolutePlaybackRate: absoluteRate
         }
       );
 
@@ -2011,11 +2043,13 @@ export default function App() {
           audioBlob.size > 200 &&
           (sttProv === 'hybrid_ai' || sttProv === 'gemini_stt')
         ) {
-          evaluateAudioWithCloudStt(audioBlob, targetStr, sttProv, true).then(cloudCoach => {
-            if (cloudCoach && currentIndexRef.current === sentenceIdx) {
-              setAiCoachFeedback(cloudCoach);
+          evaluateAudioWithCloudStt(audioBlob, targetStr, sttProv, true, reportSttFailure).then(
+            cloudCoach => {
+              if (cloudCoach && currentIndexRef.current === sentenceIdx) {
+                setAiCoachFeedback(cloudCoach);
+              }
             }
-          });
+          );
         }
       } else if (!spoken) {
         setAiCoachFeedback(null);
@@ -2058,7 +2092,7 @@ export default function App() {
       setStudyStats(nextStats);
       ShadowRepository.stats.save(nextStats);
     },
-    [currentBookId]
+    [currentBookId, reportSttFailure]
   );
 
   // Trigger a Challenge Step ('challenges' = both, 'challenge_pronunciation' = 1 only, 'challenge_matching' = 2 only)
@@ -2318,7 +2352,8 @@ export default function App() {
       lang: 'en-US' | 'pt-BR',
       speedMultiplier = 1.0,
       toggleIfCurrentlyPlaying = false,
-      preserveSequenceHighlight = false
+      preserveSequenceHighlight = false,
+      absoluteRate?: number
     ) => {
       if (!text) return;
       unlockAudioSession();
@@ -2348,7 +2383,7 @@ export default function App() {
       if (audioKey) setActiveManualAudio(audioKey);
       if (cardHighlight) setActiveCardHighlight(cardHighlight);
 
-      await speakText(text, lang, speedMultiplier);
+      await speakText(text, lang, speedMultiplier, absoluteRate);
 
       if (token === activeStepTokenRef.current && !isPlayingLoopRef.current) {
         setActiveCardHighlight(null);
@@ -2411,7 +2446,7 @@ export default function App() {
             setActiveCardHighlight(null);
           } else if (step === 'en_slow') {
             setActiveCardHighlight('en');
-            await speakText(enText, 'en-US', 0.72);
+            await speakText(enText, 'en-US', 1.0, EN_SLOW_PLAYBACK_RATE);
             if (!isStillCurrent()) return;
             setActiveCardHighlight(null);
           }
@@ -2542,7 +2577,7 @@ export default function App() {
         if (!isValid()) return;
       } else if (stepCard === 'en_slow') {
         setActiveCardHighlight('en');
-        await speakText(targetEn, 'en-US', 0.72);
+        await speakText(targetEn, 'en-US', 1.0, EN_SLOW_PLAYBACK_RATE);
         setActiveCardHighlight(null);
         if (!isValid()) return;
         await new Promise(r => setTimeout(r, 300));
@@ -3011,10 +3046,6 @@ export default function App() {
     async (spoken: string, idx: number, curr: Sentence) => {
       const targetText =
         isStepByStepMode && activeStudyStep ? activeStudyStep.text : curr.en;
-      const targetPt =
-        isStepByStepMode && activeStudyStep && activeStudyStep.ptText
-          ? activeStudyStep.ptText
-          : curr.pt;
       const isIntermediateSubClause = Boolean(
         isStepByStepMode &&
           activeStudyStep &&
@@ -3033,11 +3064,7 @@ export default function App() {
         speakStepPositions[currentSpeakStageIdx] ?? speakStepPositions[0] ?? -1;
       const currentSpeakCard =
         (currentSeqPos >= 0 ? effectiveSequence[currentSeqPos] : undefined) || 'speak';
-      const nextSpeakStageIdx = currentSpeakStageIdx + 1;
-      const hasMoreSpeakSteps = nextSpeakStageIdx < speakStepPositions.length;
-      const nextSeqPos = hasMoreSpeakSteps
-        ? speakStepPositions[nextSpeakStageIdx]
-        : effectiveSequence.length;
+      const hasMoreSpeakSteps = currentSpeakStageIdx + 1 < speakStepPositions.length;
 
       const normalizedSpoken = normalizeSpokenTranscriptNumbers(spoken, targetText);
       const { score, wordResults: wRes } = calculateSimilarity(
@@ -3051,16 +3078,6 @@ export default function App() {
       if (score >= settingsRef.current.threshold) {
         playChime('success', settingsRef.current.audioBeeps);
         activeStepTokenRef.current += 1;
-        const evalToken = activeStepTokenRef.current;
-        const isEvalValid = () =>
-          shouldContinueAsyncStep({
-            token: evalToken,
-            activeToken: activeStepTokenRef.current,
-            sentenceIdx: idx,
-            currentSentenceIdx: currentIndexRef.current,
-            requireLoop: false,
-            isPlayingLoop: isPlayingLoopRef.current
-          }) && !isPlayingLoopRef.current;
 
         stopVoiceRecordingAndAnalyser();
         if (recognitionRef.current) {
@@ -3083,242 +3100,60 @@ export default function App() {
           setChallengeUnlocked(true);
         }
 
-        if (currentSpeakCard === 'speak_blind_en') {
-          isBlindStageActiveRef.current = false;
-          setIsBlindStageActive(false);
-          setBlindEnglishUnlocked(true);
-          blindErrorCountRef.current = 0;
-          setBlindErrorCount(0);
-        }
+        // ── Modo Livre ───────────────────────────────────────────────────────
+        // Fora do Ciclo Guiado, a etapa termina nela mesma: nada de tocar
+        // pt/en/literal seguintes, abrir desafio, iniciar a próxima fala,
+        // avançar de parte ou pular de sentença. O avanço é sempre explícito,
+        // pelo CTA "Próxima parte"/"Próxima sentença" ou por "Iniciar Treino".
+        // (`runShadowingStep` cuida do encadeamento automático no treino.)
+        const passedBlindStage = currentSpeakCard === 'speak_blind_en';
+        const subPartCompleted = isIntermediateSubClause && !hasMoreSpeakSteps;
+        const freeModeDecision = resolveFreeModeCompletion({
+          isPlayingLoop: false,
+          isStepByStepMode,
+          isIntermediateSubClause,
+          subPartCompleted,
+          sentenceCompleted: Boolean(sentenceProgressRef.current[idx]?.completed),
+          hasNextSentence: idx + 1 < sentencesRef.current.length
+        });
 
-        // Execute all non-speaking steps configured between currentSeqPos + 1 and nextSeqPos
-        // (such as 'pt', 'en', 'en_slow', 'literal' [Revisão Automática], and 'challenges' [Desafios]!)
-        for (let s = currentSeqPos + 1; s < nextSeqPos; s++) {
-          if (!isEvalValid()) return;
-          stopAllAudioPlayback();
-          const stepType = effectiveSequence[s];
-          setActiveSequenceStepIdx(s);
-
-          if (stepType === 'pt' && targetPt) {
-            setChallengeUnlocked(true);
-            setActiveCardHighlight('pt');
-            await speakText(targetPt, 'pt-BR', 1.0);
-            setActiveCardHighlight(null);
-            if (!isEvalValid()) return;
-          } else if (stepType === 'en') {
-            setActiveCardHighlight('en');
-            await speakText(targetText, 'en-US', 1.0);
-            setActiveCardHighlight(null);
-            if (!isEvalValid()) return;
-          } else if (stepType === 'en_slow') {
-            setActiveCardHighlight('en');
-            await speakText(targetText, 'en-US', 0.72);
-            setActiveCardHighlight(null);
-            if (!isEvalValid()) return;
-          } else if (stepType === 'literal') {
-            await readWordByWordReview(targetText, evalToken, false, false);
-            if (!isEvalValid()) return;
-          } else if (isChallengeStepCard(stepType) && !isIntermediateSubClause) {
-            setStateBadgeText('🏆 Etapa de Desafios!');
-            setStateBadgeColor('text-purple-300');
-            const challengeOutcome = await runPostSentenceChallenges(
-              curr.en,
-              idx,
-              true,
-              stepType as 'challenges' | 'challenge_pronunciation' | 'challenge_matching'
-            );
-            stopAllAudioPlayback();
-            if (!isEvalValid()) return;
-
-            const resolution = resolveChallengeResolution(challengeOutcome, false);
-            if (resolution.action === 'stay_free') {
-              manualSpeakStageIdxRef.current = 0;
-              setActiveSequenceStepIdx(null);
-              setEnginePhase('IDLE');
-              setStateBadgeText('Pronto');
-              setStateBadgeColor('text-slate-300');
-              showToast('Desafio fechado — permanecendo nesta sentença.');
-              return;
-            }
-
-            if (resolution.action === 'repeat_sentence') {
-              activeStepIdxRef.current = 0;
-              setActiveStepIdx(0);
-              setCompletedStepIndices([]);
-              setChallengeUnlocked(false);
-              setBlindEnglishUnlocked(false);
-              isBlindStageActiveRef.current = false;
-              setIsBlindStageActive(false);
-              setActiveSequenceStepIdx(null);
-              manualSpeakStageIdxRef.current = 0;
-              setLastScore(null);
-              setWordResults([]);
-              setStateBadgeText('Repetindo sentença...');
-              setStateBadgeColor('text-amber-300');
-              showToast('Repetindo a sentença para reforçar as palavras do desafio!');
-              await speakText(curr.en, 'en-US');
-              if (isEvalValid()) {
-                setEnginePhase('IDLE');
-                setStateBadgeText('Pronto');
-                setStateBadgeColor('text-slate-300');
-              }
-              return;
-            }
-          }
-        }
-
-        if (!isEvalValid()) return;
         stopAllAudioPlayback();
-
-        // If there is another speaking step in effectiveSequence (e.g. 'speak_blind_en' after 'speak'), transition into it!
-        if (hasMoreSpeakSteps) {
-          manualSpeakStageIdxRef.current = nextSpeakStageIdx;
-          const nextSpeakCard = effectiveSequence[nextSeqPos];
-          activeSequenceStepIdxRef.current = nextSeqPos;
-          setActiveSequenceStepIdx(nextSeqPos);
-          if (pausedResumeSeqIdxRef.current !== null) {
-            pausedResumeSeqIdxRef.current = nextSeqPos;
-            setPausedResumeSeqIdx(nextSeqPos);
-          }
-
-          if (nextSpeakCard === 'speak_blind_en') {
-            isBlindStageActiveRef.current = true;
-            setIsBlindStageActive(true);
-            setBlindEnglishUnlocked(false);
-            blindErrorCountRef.current = 0;
-            setBlindErrorCount(0);
-            setLastScore(null);
-            setWordResults([]);
-            setUserTranscript('🧠 Modo sem ler o inglês: olhe apenas o português e fale!');
-            setStateBadgeText('🧠 Etapa Sem Ler EN: Olhe apenas o PT e fale!');
-            setStateBadgeColor('text-emerald-300');
-            showToast(
-              '🧠 Etapa Falar Sem Inglês: O texto em inglês foi ocultado! Agora fale olhando apenas o português.'
-            );
-          } else if (nextSpeakCard === 'speak_challenge') {
-            isBlindStageActiveRef.current = false;
-            setIsBlindStageActive(false);
-            setChallengeUnlocked(false);
-            setStateBadgeText(
-              `🔒 Etapa de Fala (${nextSpeakStageIdx + 1}/${speakStepPositions.length}): Sem PT!`
-            );
-            setStateBadgeColor('text-amber-300');
-            showToast(
-              `🔒 Etapa de Fala ${nextSpeakStageIdx + 1}/${speakStepPositions.length}: Pronuncie com PT oculto!`
-            );
-          } else {
-            isBlindStageActiveRef.current = false;
-            setIsBlindStageActive(false);
-            setStateBadgeText(
-              `🎤 Etapa de Fala (${nextSpeakStageIdx + 1}/${speakStepPositions.length}) — Fale novamente!`
-            );
-            setStateBadgeColor('text-emerald-300');
-            showToast(
-              `🔁 Etapa de Fala (${nextSpeakStageIdx + 1}/${speakStepPositions.length}): Pronuncie mais uma vez para fixar!`
-            );
-          }
-          if (!isEvalValid()) return;
-
-          const handlePausedSecondSpeakStage = () => {
-            fallbackCancelledByUserRef.current = false;
-            setEnginePhase('IDLE');
-            setStateBadgeText(
-              nextSpeakCard === 'speak_blind_en'
-                ? '🧠 Pronto p/ Falar Sem Inglês'
-                : `🎤 Pronto p/ ${nextSpeakStageIdx + 1}ª Fala`
-            );
-            setStateBadgeColor('text-emerald-300');
-            setUserTranscript(
-              'Clique em "Falar Agora" quando estiver pronto para concluir esta etapa de fala!'
-            );
-          };
-
-          if (lastInputWasSimulatorRef.current) {
-            let settled = false;
-            const resolveSimulatorNext = (nextSpoken: string) => {
-              if (settled) return;
-              settled = true;
-              abortFallbackSpeechRef.current = null;
-              setFallbackSpeechRequest(null);
-              if (!isEvalValid()) return;
-              if (nextSpoken && nextSpoken.trim().length > 0) {
-                evaluateTargetOrStep(nextSpoken, idx, curr);
-              } else {
-                handlePausedSecondSpeakStage();
-              }
-            };
-            abortFallbackSpeechRef.current = () => resolveSimulatorNext('');
-            setFallbackSpeechRequest({
-              target: targetText,
-              resolve: resolveSimulatorNext
-            });
-          } else {
-            const nextSpoken = await listenForSpeech(targetText);
-            if (!isEvalValid()) return;
-            if (nextSpoken && nextSpoken.trim().length > 0) {
-              await evaluateTargetOrStep(nextSpoken, idx, curr);
-            } else {
-              handlePausedSecondSpeakStage();
-            }
-          }
-          return;
-        }
-
-        // All steps in the sequence for this sentence/sub-step have finished!
+        setActiveCardHighlight(null);
+        activeSequenceStepIdxRef.current = null;
+        setActiveSequenceStepIdx(null);
         manualSpeakStageIdxRef.current = 0;
         isBlindStageActiveRef.current = false;
         setIsBlindStageActive(false);
-        setActiveSequenceStepIdx(null);
+        // Winning the blind stage reveals the English text again.
+        setBlindEnglishUnlocked(passedBlindStage);
+        blindErrorCountRef.current = 0;
+        setBlindErrorCount(0);
+        setEnginePhase('IDLE');
+        setStateBadgeColor('text-emerald-300');
 
-        if (isIntermediateSubClause && activeStudyStep) {
+        if (subPartCompleted) {
           setCompletedStepIndices(prev =>
             prev.includes(activeStepIdx) ? prev : [...prev, activeStepIdx]
           );
-          setStateBadgeText(`Parte concluída! (${score}%)`);
-          setStateBadgeColor('text-emerald-300');
-          showToast(`✓ ${activeStudyStep.label} dominada (${score}%)!`);
-
-          setChallengeUnlocked(false);
-          setBlindEnglishUnlocked(false);
-          blindErrorCountRef.current = 0;
-          setBlindErrorCount(0);
           setLastScore(null);
           setWordResults([]);
-          const nextStepIndex = Math.min(studySteps.length - 1, activeStepIdx + 1);
-          activeStepIdxRef.current = nextStepIndex;
-          setActiveStepIdx(nextStepIndex);
-          const nextStepObj = studySteps[nextStepIndex];
-          if (nextStepObj) {
-            await playStepBilingualPreview(
-              nextStepObj.text,
-              nextStepObj.ptText || curr.pt,
-              !nextStepObj.isFull
-            );
-            if (currentIndexRef.current === idx && !isPlayingLoopRef.current) {
-              setUserTranscript(
-                `${nextStepObj.label} pronta — toque em "Falar Agora" ou "Iniciar Treino".`
-              );
-            }
-          }
+          setStateBadgeText(`✓ Parte concluída! (${score}%)`);
+          showToast(
+            `✓ ${activeStudyStep?.label ?? 'Parte'} concluída (${score}%)! Use "Próxima parte" para seguir.`
+          );
+        } else if (freeModeDecision.cta === 'finish_book') {
+          setStateBadgeText(`✓ Sentença dominada! (${score}%)`);
+          showToast(`✓ ${score}%! Livro concluído — use "Concluir livro" para finalizar.`);
+        } else if (freeModeDecision.cta === 'next_sentence') {
+          setStateBadgeText(`✓ Sentença dominada! (${score}%)`);
+          showToast(`✓ ${score}%! Use "Próxima sentença" para continuar.`);
         } else {
-          if (isStepByStepMode && activeStudyStep) {
-            setCompletedStepIndices(prev =>
-              prev.includes(activeStepIdx) ? prev : [...prev, activeStepIdx]
-            );
-          }
-          setStateBadgeText('Excelente!');
-          setStateBadgeColor('text-emerald-300');
-          showToast(`Excelente pronúncia! (${score}%)`);
-          setBlindEnglishUnlocked(false);
-
-          if (idx + 1 < sentencesRef.current.length) {
-            delete sentenceWordMistakeCountsRef.current[idx + 1];
-            jumpToSentence(idx + 1);
-          } else {
-            setEnginePhase('COMPLETED');
-            playChime('success', settingsRef.current.audioBeeps);
-            setIsBookCompletedOpen(true);
-          }
+          setStateBadgeText(`✓ Etapa concluída! (${score}%)`);
+          showToast(
+            isIntermediateSubClause
+              ? `✓ ${score}% nesta etapa! Use as etapas acima ou "Iniciar Treino" para seguir.`
+              : `✓ ${score}%! Use as etapas acima para continuar nesta sentença.`
+          );
         }
       } else {
         playChime('retry', settingsRef.current.audioBeeps);
@@ -3369,13 +3204,7 @@ export default function App() {
       activeStudyStep,
       applyEvaluationFeedback,
       isStepByStepMode,
-      jumpToSentence,
-      listenForSpeech,
-      playStepBilingualPreview,
-      readWordByWordReview,
-      runPostSentenceChallenges,
       showToast,
-      speakText,
       stopVoiceRecordingAndAnalyser,
       studySteps
     ]
@@ -3584,16 +3413,20 @@ export default function App() {
           setStateBadgeText('Pronto');
           setStateBadgeColor('text-slate-300');
         }
-      } else if (idx + 1 < sentencesRef.current.length) {
-        jumpToSentence(idx + 1);
       } else {
-        setEnginePhase('COMPLETED');
-        playChime('success', settingsRef.current.audioBeeps);
-        setIsBookCompletedOpen(true);
+        // Modo Livre: concluir/saltar o desafio não troca de sentença.
+        // O avanço acontece só pelo CTA "Próxima sentença"/"Concluir livro".
+        activeSequenceStepIdxRef.current = null;
+        setActiveSequenceStepIdx(null);
+        setEnginePhase('IDLE');
+        setStateBadgeText('🏆 Desafio concluído!');
+        setStateBadgeColor('text-emerald-300');
+        showToast(
+          '🏆 Desafio concluído! Sentença mantida — use "Próxima sentença" para avançar.'
+        );
       }
     },
     [
-      jumpToSentence,
       pauseLoopForManualControl,
       runPostSentenceChallenges,
       showToast,
@@ -3682,8 +3515,8 @@ export default function App() {
       setUserTranscript('🔄 Revise o inglês e tente novamente a etapa Sem Ler!');
       showToast('🔄 Voltando para rever o inglês antes da etapa Sem Ler!');
       const audioKey = restartCard === 'en_slow' ? 'en_slow' : 'en';
-      const speed = restartCard === 'en_slow' ? 0.72 : 1.0;
-      runManualAudioPlayback(audioKey, 'en', targetEn, 'en-US', speed, false, true);
+      const absoluteRate = restartCard === 'en_slow' ? EN_SLOW_PLAYBACK_RATE : undefined;
+      runManualAudioPlayback(audioKey, 'en', targetEn, 'en-US', 1.0, false, true, absoluteRate);
     }
   }, [
     activeSequenceStepIdx,
@@ -3706,6 +3539,63 @@ export default function App() {
       setIsBookCompletedOpen(true);
     }
   }, [navigateSentence]);
+
+  // Explicit "Próxima parte →" CTA (Modo Livre): advances one study step, never automatic.
+  const handleNextPartButton = useCallback(async () => {
+    if (!isStepByStepMode || !activeStudyStep) return;
+    const idx = currentIndexRef.current;
+    const curr = sentencesRef.current[idx];
+    if (!curr) return;
+
+    stopAllAudioPlayback();
+    abortFallbackSpeechRef.current?.();
+    abortSpeechCaptureRef.current?.();
+    activeStepTokenRef.current += 1;
+
+    activeSequenceStepIdxRef.current = null;
+    setActiveSequenceStepIdx(null);
+    manualSpeakStageIdxRef.current = 0;
+    isBlindStageActiveRef.current = false;
+    setIsBlindStageActive(false);
+    setChallengeUnlocked(false);
+    setBlindEnglishUnlocked(false);
+    blindErrorCountRef.current = 0;
+    setBlindErrorCount(0);
+    setLastScore(null);
+    setWordResults([]);
+    setAiCoachFeedback(null);
+
+    const nextStepIndex = Math.min(Math.max(0, studySteps.length - 1), activeStepIdx + 1);
+    activeStepIdxRef.current = nextStepIndex;
+    setActiveStepIdx(nextStepIndex);
+
+    const nextStepObj = studySteps[nextStepIndex];
+    if (!nextStepObj) return;
+
+    await playStepBilingualPreview(
+      nextStepObj.text,
+      nextStepObj.ptText || curr.pt,
+      !nextStepObj.isFull
+    );
+    // playStepBilingualPreview resets the badge, so the hint goes after it.
+    if (currentIndexRef.current === idx && !isPlayingLoopRef.current) {
+      setEnginePhase('IDLE');
+      setStateBadgeText(
+        nextStepObj.isFull ? 'Frase inteira pronta — fale!' : `${nextStepObj.label} pronta!`
+      );
+      setStateBadgeColor('text-brand-300');
+      setUserTranscript(
+        `${nextStepObj.label} pronta — toque em "Falar Agora" ou "Iniciar Treino".`
+      );
+    }
+  }, [
+    activeStepIdx,
+    activeStudyStep,
+    isStepByStepMode,
+    playStepBilingualPreview,
+    stopAllAudioPlayback,
+    studySteps
+  ]);
 
   // Skip individual word-by-word reading in Card 03 and jump immediately to the next step
   const handleSkipWordByWord = useCallback(() => {
@@ -4200,7 +4090,12 @@ export default function App() {
   }, []);
 
   // Computed Pedagogical Metadata for Current Sentence
-  const progressPct = Math.round(((currentIndex + 1) / Math.max(1, sentences.length)) * 100);
+  // Progress = mastered sentences (final full-sentence speaking pass), not reading position.
+  const bookProgress = useMemo(
+    () => computeBookProgress(sentences.length, sentenceProgress),
+    [sentences.length, sentenceProgress]
+  );
+  const progressPct = bookProgress.percent;
   const isCurrentSubClauseStep = Boolean(
     isStepByStepMode &&
       activeStudyStep &&
@@ -4214,6 +4109,29 @@ export default function App() {
         isSubClauseStep: isCurrentSubClauseStep
       }),
     [settings, isStepByStepMode, isCurrentSubClauseStep]
+  );
+
+  // Explicit advance CTA for Modo Livre (never auto-advances outside the training loop).
+  const freeModeCta = useMemo(
+    () =>
+      resolveFreeModeCompletion({
+        isPlayingLoop,
+        isStepByStepMode,
+        isIntermediateSubClause: isCurrentSubClauseStep,
+        subPartCompleted: completedStepIndices.includes(activeStepIdx),
+        sentenceCompleted: Boolean(sentenceProgress[currentIndex]?.completed),
+        hasNextSentence: currentIndex + 1 < sentences.length
+      }).cta,
+    [
+      activeStepIdx,
+      completedStepIndices,
+      currentIndex,
+      isCurrentSubClauseStep,
+      isPlayingLoop,
+      isStepByStepMode,
+      sentenceProgress,
+      sentences.length
+    ]
   );
 
   useEffect(() => {
@@ -4362,7 +4280,16 @@ export default function App() {
       } else if (stepType === 'en_slow') {
         activeSequenceStepIdxRef.current = seqIdx;
         setActiveSequenceStepIdx(seqIdx);
-        await runManualAudioPlayback('en_slow', 'en', targetEn, 'en-US', 0.72, false, true);
+        await runManualAudioPlayback(
+          'en_slow',
+          'en',
+          targetEn,
+          'en-US',
+          1.0,
+          false,
+          true,
+          EN_SLOW_PLAYBACK_RATE
+        );
       } else if (stepType === 'literal') {
         activeSequenceStepIdxRef.current = seqIdx;
         setActiveSequenceStepIdx(seqIdx);
@@ -4512,13 +4439,16 @@ export default function App() {
         }}
         onOpenSettings={() => {
           stopLoop();
-          setSettingsInitialTab('models');
+          setSettingsInitialTab('presets');
           setIsSettingsOpen(true);
         }}
       />
 
       {/* PROGRESS BAR */}
-      <div className="w-full bg-slate-800 h-1 shrink-0 overflow-hidden">
+      <div
+        className="w-full bg-slate-800 h-1 shrink-0 overflow-hidden"
+        title={`Frases dominadas: ${bookProgress.completedCount} de ${bookProgress.total} (${bookProgress.percent}%)`}
+      >
         <div
           id="progressBar"
           className="bg-gradient-to-r from-brand-500 to-indigo-400 h-full transition-all duration-300"
@@ -4534,7 +4464,7 @@ export default function App() {
             : 'overflow-y-auto'
         } overflow-x-hidden px-3 ${
           isMobileTrainingCompact ? 'py-1.5 gap-1.5' : 'py-2 gap-1.5 sm:gap-2'
-        } sm:px-6 lg:px-8 xl:px-10 sm:py-2.5 lg:py-3 flex flex-col lg:gap-2.5 max-w-4xl lg:max-w-5xl xl:max-w-[1380px] 2xl:max-w-[1480px] mx-auto w-full`}
+        } sm:px-6 lg:px-8 xl:px-10 sm:py-2.5 lg:py-3 flex flex-col lg:gap-2.5 max-w-4xl lg:max-w-5xl xl:max-w-[1180px] 2xl:max-w-[1280px] mx-auto w-full`}
       >
         {/* UPFRONT MICROPHONE PERMISSION BANNER (Hidden during active mobile training to preserve viewport budget) */}
         {!micPermissionGranted && !isMobileTrainingCompact && (
@@ -4649,7 +4579,7 @@ export default function App() {
                 <span aria-hidden="true" className="text-slate-600 hidden md:inline">
                   ·
                 </span>
-                <span className="hidden md:inline text-indigo-300 font-semibold whitespace-nowrap">
+                <span className="hidden md:inline text-slate-300 font-semibold whitespace-nowrap">
                   Nível {currentCefr}
                 </span>
               </>
@@ -4708,7 +4638,7 @@ export default function App() {
                   id="btnViewCards"
                   type="button"
                   onClick={() => handleUpdateSettings({ studyViewMode: 'cards' })}
-                  className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition cursor-pointer whitespace-nowrap ${
+                  className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
                     settings.studyViewMode !== 'paragraph'
                       ? 'bg-brand-600 text-white'
                       : 'text-slate-400 hover:text-white'
@@ -4721,7 +4651,7 @@ export default function App() {
                   id="btnViewParagraph"
                   type="button"
                   onClick={() => handleUpdateSettings({ studyViewMode: 'paragraph' })}
-                  className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition cursor-pointer whitespace-nowrap ${
+                  className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
                     settings.studyViewMode === 'paragraph'
                       ? 'bg-brand-600 text-white'
                       : 'text-slate-400 hover:text-white'
@@ -4737,14 +4667,16 @@ export default function App() {
                 type="button"
                 onClick={() => {
                   stopLoop();
-                  setSettingsInitialTab('custom_cards');
+                  setSettingsInitialTab('steps');
                   setIsSettingsOpen(true);
                 }}
-                title="Customizar ordem e repetição de cards em Configurações"
-                className="hidden sm:flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 border border-slate-700/70 hover:border-brand-500/50 text-[10px] font-semibold text-brand-300 transition cursor-pointer whitespace-nowrap"
+                title={`Editar etapas e repetições em Configurações · Sequência atual: ${formatCardSequenceSummary(
+                  buildEffectiveCardSequence(settings)
+                )}`}
+                className="hidden lg:flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 border border-slate-700/70 hover:border-brand-500/50 text-[10px] font-semibold text-brand-300 hover:text-white transition cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
               >
-                <span>🎛️</span>
-                <span>{formatCardSequenceSummary(buildEffectiveCardSequence(settings))}</span>
+                <span aria-hidden="true">🎛️</span>
+                <span>Etapas</span>
               </button>
             </div>
 
@@ -4764,7 +4696,7 @@ export default function App() {
                   }
                 }}
                 title="Ativar ou desativar o Modo Mãos Livres (clique em Iniciar Treino para começar)"
-                className={`min-h-[30px] sm:min-h-0 flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[10px] font-bold transition cursor-pointer whitespace-nowrap font-sans ${
+                className={`min-h-[30px] sm:min-h-0 flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[10px] font-bold transition cursor-pointer whitespace-nowrap font-sans focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
                   settings.autoHandsFree
                     ? 'bg-emerald-600/30 border-emerald-400 text-emerald-200 ring-1 ring-emerald-400/50 shadow-xs'
                     : 'bg-slate-800/90 hover:bg-slate-700 border-slate-700/70 text-slate-300 hover:text-white'
@@ -4782,13 +4714,13 @@ export default function App() {
                 type="button"
                 onClick={() => {
                   stopLoop();
-                  setSettingsInitialTab('voice_ai_hub');
+                  setSettingsInitialTab('voice_ai');
                   setIsSettingsOpen(true);
                 }}
                 title="Abrir Central de Voz & IA (Provedores de TTS, STT e Coach Fonético)"
                 className={`${
                   isMobileTrainingCompact ? 'hidden md:flex' : 'flex'
-                } min-h-[30px] sm:min-h-0 items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/35 border border-indigo-500/40 text-[10px] font-bold text-indigo-200 transition cursor-pointer whitespace-nowrap font-sans`}
+                } lg:hidden min-h-[30px] sm:min-h-0 items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/35 border border-indigo-500/40 text-[10px] font-bold text-indigo-200 transition cursor-pointer whitespace-nowrap font-sans`}
               >
                 <span>🎙️</span>
                 <span>Voz & IA</span>
@@ -4828,7 +4760,7 @@ export default function App() {
                 title="Abrir Índice e Navegador de Sentenças"
                 className={`${
                   isMobileTrainingCompact ? 'inline-flex' : 'hidden sm:inline-flex'
-                } hover:text-white underline decoration-slate-600 underline-offset-2 cursor-pointer whitespace-nowrap`}
+                } hover:text-white underline decoration-slate-600 underline-offset-2 cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 rounded`}
               >
                 <span id="sentenceIndexDisplay">
                   <span className="hidden sm:inline">Sentença </span>
@@ -4886,7 +4818,7 @@ export default function App() {
                         ? `Etapa ${seqIdx + 1}: ${meta.label} (clique para voltar/ir a esta etapa e continuar o treino a partir dela)`
                         : `Etapa ${seqIdx + 1}: ${meta.label} (clique para executar apenas esta etapa)`
                     }
-                    className={`px-2 py-0.5 rounded-md border transition cursor-pointer flex items-center gap-1 whitespace-nowrap shrink-0 ${
+                    className={`px-2 py-0.5 rounded-md border transition cursor-pointer flex items-center gap-1 whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${
                       isCurrentStep
                         ? 'bg-gradient-to-r from-brand-500 to-indigo-500 text-white border-brand-200 ring-2 ring-amber-400/90 shadow-md shadow-brand-500/35 font-extrabold'
                         : isStepDone
@@ -4921,17 +4853,52 @@ export default function App() {
             })}
           </div>
 
+          {freeModeCta !== 'none' && (
+            <button
+              id="btnFreeModeNextCta"
+              type="button"
+              onClick={
+                freeModeCta === 'next_part' ? handleNextPartButton : handleNextSentenceButton
+              }
+              title={
+                freeModeCta === 'next_part'
+                  ? 'Avançar para a próxima parte desta frase'
+                  : freeModeCta === 'next_sentence'
+                    ? `Ir para a sentença ${currentIndex + 2}`
+                    : 'Finalizar o livro e ver o resumo'
+              }
+              className="px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-500 border border-emerald-300/60 text-white font-extrabold whitespace-nowrap shrink-0 transition cursor-pointer flex items-center gap-1 shadow-sm shadow-emerald-900/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+            >
+              <span aria-hidden="true">✓</span>
+              <span className="sm:hidden">
+                {freeModeCta === 'next_part'
+                  ? 'Parte'
+                  : freeModeCta === 'next_sentence'
+                    ? 'Sentença'
+                    : 'Livro'}
+              </span>
+              <span className="hidden sm:inline">
+                {freeModeCta === 'next_part'
+                  ? 'Próxima parte'
+                  : freeModeCta === 'next_sentence'
+                    ? 'Próxima sentença'
+                    : 'Concluir livro'}
+              </span>
+              <span aria-hidden="true">→</span>
+            </button>
+          )}
+
           <button
             id="btnEditStepOrderBar"
             type="button"
             onClick={() => {
               stopLoop();
-              setSettingsInitialTab('custom_cards');
+              setSettingsInitialTab('steps');
               setIsSettingsOpen(true);
             }}
             className={`${
               isMobileTrainingCompact ? 'hidden md:inline-flex' : 'inline-flex'
-            } px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-brand-300 hover:text-white font-semibold transition cursor-pointer whitespace-nowrap shrink-0 items-center gap-1`}
+            } lg:hidden px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-brand-300 hover:text-white font-semibold transition cursor-pointer whitespace-nowrap shrink-0 items-center gap-1`}
             title="Personalizar a ordem das etapas (incluindo Desafios, Falar Sem Inglês e Revisão Automática)"
           >
             <span>⚙️</span>
@@ -5678,11 +5645,11 @@ export default function App() {
                         {!isCompactEnRef && (
                           <CardAudioButton
                             id={`btnPlayEnSlow${idSuffix}`}
-                            label="Ouvir 0.7x"
+                            label="Ouvir 0.6x"
                             stopLabel="Parar"
                             isPlaying={activeManualAudio === 'en_slow'}
                             ariaLabel="Ouvir devagar em inglês"
-                            title="Ouvir devagar em inglês (0.7x)"
+                            title="Ouvir devagar em inglês (0.6x)"
                             onClick={() => {
                               if (!currentSentence) return;
                               const targetEnText =
@@ -5694,8 +5661,10 @@ export default function App() {
                                 'en',
                                 targetEnText,
                                 'en-US',
-                                0.72,
-                                activeManualAudio === 'en_slow'
+                                1.0,
+                                activeManualAudio === 'en_slow',
+                                false,
+                                EN_SLOW_PLAYBACK_RATE
                               );
                             }}
                           />
@@ -6475,8 +6444,11 @@ export default function App() {
       </main>
 
       {/* PINNED BOTTOM ACTION DOCK */}
-      <footer className="bg-slate-900/95 backdrop-blur border-t border-slate-800 px-3 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] sm:px-6 lg:px-8 xl:px-10 sm:py-3 shrink-0 w-full z-20">
-        <div className="max-w-4xl lg:max-w-5xl xl:max-w-[1380px] 2xl:max-w-[1480px] mx-auto flex items-center justify-between gap-2 sm:gap-3 lg:gap-4">
+      <footer
+        id="sessionControlsDock"
+        className="bg-slate-900/95 backdrop-blur border-t border-slate-800 px-3 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] sm:px-6 lg:px-8 xl:px-10 sm:py-3 shrink-0 w-full z-20"
+      >
+        <div className="max-w-4xl lg:max-w-5xl xl:max-w-[1180px] 2xl:max-w-[1280px] mx-auto flex items-center justify-between gap-2 sm:gap-3 lg:gap-4">
           {/* Prev Sentence */}
           <button
             id="btnPrevSentence"
@@ -6485,7 +6457,7 @@ export default function App() {
             disabled={currentIndex === 0}
             aria-label="Sentença Anterior"
             title="Sentença Anterior"
-            className="min-w-[44px] min-h-[44px] p-2.5 sm:p-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 active:scale-95 text-slate-300 transition cursor-pointer flex items-center justify-center shrink-0"
+            className="min-w-[44px] min-h-[44px] p-2.5 sm:p-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 active:scale-95 text-slate-300 transition cursor-pointer flex items-center justify-center shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
           >
             <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" />
@@ -6522,7 +6494,7 @@ export default function App() {
                       ? 'Pausar o treino automático'
                       : 'Iniciar o treino automático'
                 }
-                className={`min-h-[44px] flex-1 py-2.5 sm:py-3 px-4 rounded-xl bg-gradient-to-r ${loopBtnGradient} active:scale-[0.98] text-white font-bold text-xs sm:text-sm shadow-lg flex items-center justify-center gap-2 transition cursor-pointer whitespace-nowrap`}
+                className={`min-h-[44px] flex-1 py-2.5 sm:py-3 px-4 rounded-xl bg-gradient-to-r ${loopBtnGradient} active:scale-[0.98] text-white font-bold text-xs sm:text-sm shadow-lg flex items-center justify-center gap-2 transition cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300`}
               >
                 {loopBtnMode === 'pause' ? (
                   <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -6555,7 +6527,7 @@ export default function App() {
             onClick={handleManualMic}
             aria-label={isListeningMic ? 'Microfone aberto — Fale agora' : 'Falar Agora'}
             title={isListeningMic ? 'Microfone aberto — Fale agora!' : 'Falar Agora'}
-            className={`min-w-[44px] min-h-[44px] p-2.5 sm:p-3 rounded-xl active:scale-95 transition relative cursor-pointer flex items-center justify-center shrink-0 ${
+            className={`min-w-[44px] min-h-[44px] p-2.5 sm:p-3 rounded-xl active:scale-95 transition relative cursor-pointer flex items-center justify-center shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 ${
               isListeningMic
                 ? 'bg-rose-600 hover:bg-rose-500 text-white ring-2 ring-rose-400 shadow-lg shadow-rose-500/40 animate-pulse'
                 : micPermissionGranted
@@ -6584,10 +6556,13 @@ export default function App() {
             id="btnNextSentence"
             type="button"
             onClick={handleNextSentenceButton}
-            disabled={currentIndex >= sentences.length - 1}
-            aria-label="Próxima Sentença"
-            title="Concluir / Próxima Sentença"
-            className="min-w-[44px] min-h-[44px] p-2.5 sm:p-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 active:scale-95 text-slate-300 transition cursor-pointer flex items-center justify-center shrink-0"
+            aria-label={currentIndex >= sentences.length - 1 ? 'Concluir livro' : 'Próxima Sentença'}
+            title={
+              currentIndex >= sentences.length - 1
+                ? 'Concluir livro'
+                : 'Ir para a próxima sentença (avanço manual)'
+            }
+            className="min-w-[44px] min-h-[44px] p-2.5 sm:p-3 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 transition cursor-pointer flex items-center justify-center shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
           >
             <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />

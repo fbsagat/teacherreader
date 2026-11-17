@@ -51,7 +51,7 @@ test('normalizeSettings validates enums and drops invalid sequences', () => {
   assert.equal(result.ttsEngine, 'gemini_tts');
   assert.equal(result.sttProvider, 'hybrid_ai');
   assert.equal(result.themeMode, 'dark');
-  assert.equal(result.audioFlow, 'pt_first');
+  assert.equal(result.audioFlow, 'blind_en');
   assert.equal(result.studyViewMode, 'cards');
   assert.equal(result.handsFreeChallengeMode, 'voice_all');
   assert.equal(result.sttStrictness, 'balanced');

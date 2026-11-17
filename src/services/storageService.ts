@@ -7,6 +7,7 @@ import {
   WordMatchResult
 } from '../types/shadowreader';
 import { localDayKey } from '../utils/localTime';
+import { computeBookProgress } from '../utils/bookProgress';
 import { DEFAULT_SETTINGS, normalizeSettings } from '../utils/settingsNormalizer';
 
 export { DEFAULT_SETTINGS };
@@ -53,7 +54,6 @@ export async function saveBookToDB(book: Book): Promise<boolean> {
     const metaStore = tx.objectStore('meta');
 
     const curIdx = book.currentIndex || 0;
-    const total = book.sentences.length || 1;
     const record: Book = {
       id: book.id,
       title: book.title,
@@ -61,7 +61,7 @@ export async function saveBookToDB(book: Book): Promise<boolean> {
       totalSentences: book.sentences.length,
       currentIndex: curIdx,
       lastRead: new Date().toISOString(),
-      progressPercent: Math.round(((curIdx + 1) / total) * 100),
+      progressPercent: computeBookProgress(book.sentences.length, book.sentenceProgress).percent,
       sentences: book.sentences,
       sentenceProgress: book.sentenceProgress || {}
     };
@@ -124,16 +124,19 @@ export async function updateBookmarkInDB(
     getReq.onsuccess = () => {
       const b = getReq.result as Book | undefined;
       if (b) {
-        const total = b.totalSentences || b.sentences.length || 1;
         b.currentIndex = currentIndex;
         b.lastRead = new Date().toISOString();
-        b.progressPercent = Math.round(((currentIndex + 1) / total) * 100);
         if (sentenceProgressUpdate) {
           b.sentenceProgress = {
             ...(b.sentenceProgress || {}),
             [sentenceProgressUpdate.index]: sentenceProgressUpdate.progress
           };
         }
+        // Progress = mastery (completed sentences), recomputed from the final map.
+        b.progressPercent = computeBookProgress(
+          b.totalSentences || b.sentences.length,
+          b.sentenceProgress
+        ).percent;
         booksStore.put(b);
       }
     };
@@ -514,12 +517,13 @@ export async function applyBackupSnapshotToLocalStorageAndDB(snapshot: {
     for (const book of snapshot.books) {
       const total = book.sentences.length || 1;
       const curIdx = Math.max(0, Math.min(book.currentIndex || 0, total - 1));
+      const sentenceProgress = book.sentenceProgress || {};
       booksStore.put({
         ...book,
         totalSentences: total,
         currentIndex: curIdx,
-        progressPercent: Math.round(((curIdx + 1) / total) * 100),
-        sentenceProgress: book.sentenceProgress || {}
+        progressPercent: computeBookProgress(total, sentenceProgress).percent,
+        sentenceProgress
       });
     }
 

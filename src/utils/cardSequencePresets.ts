@@ -47,10 +47,10 @@ export const STEP_CARD_META: Record<StudyStepCardType, StepCardMeta> = {
   },
   en_slow: {
     type: 'en_slow',
-    shortLabel: 'Ouvir EN 0.7x',
-    label: 'Ouvir Inglês Lento (0.7x)',
+    shortLabel: 'Ouvir EN 0.6x',
+    label: 'Ouvir Inglês Lento (0.6x)',
     icon: '🐢',
-    description: 'Lê a sentença em inglês devagar (0.7x) para percepção de cada sílaba.',
+    description: 'Lê a sentença em inglês devagar (0.6x) para percepção de cada sílaba.',
     badgeClass: 'bg-cyan-500/20 text-cyan-200 border-cyan-500/40',
     chipClass: 'bg-cyan-950/50 border-cyan-500/40 text-cyan-200 hover:border-cyan-400',
     category: 'audio',
@@ -245,10 +245,10 @@ export const RECOMMENDED_CARD_PRESETS: RecommendedCardPreset[] = [
   {
     id: 'en_first',
     title: '🎧 Imersão Auditiva & Sílaba',
-    subtitle: 'EN → EN 0.7x → PT → Falar → Desafios',
+    subtitle: 'EN → EN 0.6x → PT → Falar → Desafios',
     badge: '★ Recomendado · Auditivo',
     description:
-      'Prioriza o Card de Inglês no topo da tela, seguido da etapa em câmera lenta (0.7x), tradução em português, fala e etapa de Desafios.',
+      'Prioriza o Card de Inglês no topo da tela, seguido da etapa em câmera lenta (0.6x), tradução em português, fala e etapa de Desafios.',
     cardSequence: ['en', 'en_slow', 'pt', 'speak', 'challenges'],
     visualCardOrder: ['en', 'literal', 'pt'],
     accentClass: 'border-slate-800 bg-slate-900/70 hover:border-cyan-500/40',
@@ -289,13 +289,19 @@ export function buildEffectiveCardSequence(
   context?: SequenceStepContext
 ): StudyStepCardType[] {
   const validTypes = new Set<string>(Object.keys(STEP_CARD_META));
+  const DEFAULT_SEQUENCE: StudyStepCardType[] = [
+    'pt',
+    'en',
+    'speak',
+    'speak_blind_en',
+    'challenges'
+  ];
   const raw: StudyStepCardType[] =
     Array.isArray(settings.cardSequence) && settings.cardSequence.length > 0
       ? settings.cardSequence.filter((c): c is StudyStepCardType => validTypes.has(c))
-      : ['pt', 'en', 'speak', 'challenges'];
+      : [...DEFAULT_SEQUENCE];
 
-  let seq: StudyStepCardType[] =
-    raw.length > 0 ? [...raw] : ['pt', 'en', 'speak', 'challenges'];
+  let seq: StudyStepCardType[] = raw.length > 0 ? [...raw] : [...DEFAULT_SEQUENCE];
 
   if (context) {
     const isSubPartInStepMode = Boolean(
@@ -342,7 +348,7 @@ export function buildEffectiveCardSequence(
  * Formats a short summary of the learning step sequence (e.g., "PT → EN → Falar → Desafios")
  */
 export function formatCardSequenceSummary(sequence: StudyStepCardType[]): string {
-  if (!sequence || sequence.length === 0) return 'PT → EN → Falar → Desafios';
+  if (!sequence || sequence.length === 0) return 'PT → EN → Falar → Sem Inglês → Desafios';
   return sequence
     .map(step => {
       switch (step) {
@@ -351,7 +357,7 @@ export function formatCardSequenceSummary(sequence: StudyStepCardType[]): string
         case 'en':
           return 'EN';
         case 'en_slow':
-          return 'EN 0.7x';
+          return 'EN 0.6x';
         case 'literal':
           return 'Revisão';
         case 'speak':

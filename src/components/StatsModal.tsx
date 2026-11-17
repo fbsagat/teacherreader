@@ -315,7 +315,7 @@ export const StatsModal: React.FC<StatsModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="statsModalTitle"
-        className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl lg:max-w-3xl xl:max-w-[880px] w-full p-4 sm:p-5 max-h-[92dvh] shadow-2xl flex flex-col overflow-hidden"
+        className="bg-slate-900 border border-slate-800 rounded-2xl w-[min(1040px,95vw)] h-[min(760px,92dvh)] p-4 sm:p-5 shadow-2xl flex flex-col overflow-hidden"
       >
         {/* Top Header + Rank Summary Strip */}
         <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-800 shrink-0">

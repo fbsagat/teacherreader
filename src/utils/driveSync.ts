@@ -6,6 +6,7 @@ import {
   StudyStats,
   VocabItem
 } from '../types/shadowreader';
+import { computeBookProgress } from './bookProgress';
 import { normalizeSettings } from './settingsNormalizer';
 
 export const DRIVE_SYNC_FILENAME = 'teacher-reader-sync-v1.json';
@@ -78,7 +79,7 @@ function sanitizeBook(raw: any): Book | null {
     totalSentences: validSentences.length,
     currentIndex,
     lastRead: typeof raw.lastRead === 'string' ? raw.lastRead : new Date(0).toISOString(),
-    progressPercent: Math.round(((currentIndex + 1) / validSentences.length) * 100),
+    progressPercent: computeBookProgress(validSentences.length, progressMap).percent,
     sentenceProgress: progressMap
   };
 }
@@ -321,14 +322,22 @@ export function mergeDriveSnapshots(
       sentences: chosenSentences,
       totalSentences: total,
       currentIndex,
-      progressPercent: Math.round(((currentIndex + 1) / total) * 100),
       sentenceProgress: mergedProgress
     });
   }
 
-  const mergedBooks = Array.from(bookMap.values()).sort(
-    (a, b) => (Date.parse(b.lastRead || '') || 0) - (Date.parse(a.lastRead || '') || 0)
-  );
+  // Progress is always derived from mastery at the merge boundary, for every book
+  // (including ones that exist on only one side), never carried over from a stale
+  // position-based percentage.
+  const mergedBooks = Array.from(bookMap.values())
+    .map(b => ({
+      ...b,
+      progressPercent: computeBookProgress(
+        b.totalSentences || b.sentences.length,
+        b.sentenceProgress
+      ).percent
+    }))
+    .sort((a, b) => (Date.parse(b.lastRead || '') || 0) - (Date.parse(a.lastRead || '') || 0));
 
   // 2. Merge Bookmarks
   const mergedBookmarks: Record<string, number> = { ...local.bookmarks };

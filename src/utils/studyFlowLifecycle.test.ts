@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   getStudyExecutionMode,
   resolveChallengeResolution,
+  resolveFreeModeCompletion,
   resolveLoopButtonMode,
   resolveLoopInterruptionPlan,
   resolveStepChipClickBehavior,
@@ -218,5 +219,69 @@ test('resolveLoopButtonMode transitions between Iniciar Treino, Pausar Treino, a
   assert.equal(resolveLoopButtonMode({ isPlayingLoop: true, pausedResumeSeqIdx: null }), 'pause');
   assert.equal(resolveLoopButtonMode({ isPlayingLoop: false, pausedResumeSeqIdx: 2 }), 'resume');
   assert.equal(resolveLoopButtonMode({ isPlayingLoop: false, pausedResumeSeqIdx: 0 }), 'resume');
+});
+
+test('resolveFreeModeCompletion never auto-advances outside the training loop', () => {
+  const freeBase = {
+    isPlayingLoop: false,
+    isStepByStepMode: true,
+    isIntermediateSubClause: true,
+    subPartCompleted: false,
+    sentenceCompleted: false,
+    hasNextSentence: true
+  };
+
+  // Nothing finished yet: stay exactly where the user is, no CTA.
+  assert.deepEqual(resolveFreeModeCompletion(freeBase), {
+    autoAdvance: false,
+    cta: 'none'
+  });
+
+  // Finished a sub-part: the app must ask before moving to the next part.
+  assert.deepEqual(resolveFreeModeCompletion({ ...freeBase, subPartCompleted: true }), {
+    autoAdvance: false,
+    cta: 'next_part'
+  });
+
+  // Finished the full sentence of a book that still has more sentences.
+  assert.deepEqual(
+    resolveFreeModeCompletion({
+      ...freeBase,
+      isIntermediateSubClause: false,
+      sentenceCompleted: true
+    }),
+    { autoAdvance: false, cta: 'next_sentence' }
+  );
+
+  // Last sentence of the book.
+  assert.deepEqual(
+    resolveFreeModeCompletion({
+      ...freeBase,
+      isIntermediateSubClause: false,
+      sentenceCompleted: true,
+      hasNextSentence: false
+    }),
+    { autoAdvance: false, cta: 'finish_book' }
+  );
+
+  // Sentence mode (not 'Em Partes'): a sub-part flag alone never produces a CTA.
+  assert.deepEqual(
+    resolveFreeModeCompletion({ ...freeBase, isStepByStepMode: false, subPartCompleted: true }),
+    { autoAdvance: false, cta: 'none' }
+  );
+});
+
+test('resolveFreeModeCompletion leaves the training loop untouched', () => {
+  assert.deepEqual(
+    resolveFreeModeCompletion({
+      isPlayingLoop: true,
+      isStepByStepMode: true,
+      isIntermediateSubClause: true,
+      subPartCompleted: true,
+      sentenceCompleted: true,
+      hasNextSentence: true
+    }),
+    { autoAdvance: true, cta: 'none' }
+  );
 });
 

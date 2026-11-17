@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DEFAULT_SETTINGS } from '../services/storageService';
 import {
+  EN_SLOW_PLAYBACK_RATE,
   computeAudioPlaybackTimeoutMs,
   computeEffectiveTtsRate,
   getVoiceCompatibilitySummary,
@@ -53,6 +54,30 @@ test('computeEffectiveTtsRate applies Gemini style cleanly without distorting sl
     speedMultiplier: 0.85
   });
   assert.equal(autoRate, 0.72);
+});
+
+test('EN_SLOW_PLAYBACK_RATE is an absolute rate that stays audibly slower than normal playback', () => {
+  const base = {
+    lang: 'en-US',
+    ttsEngine: 'gemini_tts' as const,
+    ttsSpeedEn: DEFAULT_SETTINGS.ttsSpeedEn,
+    ttsSpeedPt: DEFAULT_SETTINGS.ttsSpeedPt,
+    geminiVoiceStyle: DEFAULT_SETTINGS.geminiVoiceStyle,
+    speedMultiplier: 1.0
+  };
+
+  const normalRate = computeEffectiveTtsRate(base);
+  const slowRate = computeEffectiveTtsRate({ ...base, absoluteRate: EN_SLOW_PLAYBACK_RATE });
+
+  assert.equal(normalRate, 0.72);
+  assert.equal(slowRate, 0.6);
+  assert.ok(slowRate < normalRate, 'slow step must be distinguishable from normal playback');
+
+  // Absolute rates bypass the neural clarity floor but still respect browser-safe bounds.
+  assert.equal(computeEffectiveTtsRate({ ...base, absoluteRate: 0.05 }), 0.5);
+  assert.equal(computeEffectiveTtsRate({ ...base, absoluteRate: 4 }), 1.5);
+  // Invalid absolute rates fall back to the regular computation.
+  assert.equal(computeEffectiveTtsRate({ ...base, absoluteRate: Number.NaN }), normalRate);
 });
 
 test('computeAudioPlaybackTimeoutMs scales proportionally for slowed full sentences', () => {
@@ -142,7 +167,7 @@ test('getVoiceCompatibilitySummary reflects connected Voice Hub engines & Texto,
   assert.equal(summaryDefault.usesGeminiTts, true);
   assert.equal(summaryDefault.usesSystemVoicePicker, false);
   assert.equal(summaryDefault.isSlowdownRelevant, true);
-  assert.equal(summaryDefault.effectiveNormalEnRate, 0.83);
+  assert.equal(summaryDefault.effectiveNormalEnRate, 0.72);
   assert.equal(summaryDefault.effectiveErrorRetryEnRate, 0.72);
 
   const summaryBrowser = getVoiceCompatibilitySummary({
