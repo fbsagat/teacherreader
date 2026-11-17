@@ -3,3 +3,6 @@
 
 # Scripts de deploy precisam manter LF para rodar no Linux/serviço systemd.
 *.sh text eol=lf
+
+# Scripts do Windows (.bat) precisam de CRLF para o cmd.exe ler labels/goto.
+*.bat text eol=crlf

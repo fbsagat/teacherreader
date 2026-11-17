@@ -164,6 +164,25 @@ curl -i -X OPTIONS \
   https://instance-20260808-1016.tail4096b.ts.net/api/voice-hub/tts
 ```
 
+### Diagnóstico automatizado (`scripts/check-apis.mjs`)
+
+Confere API, CORS, Google Translate GTX, MyMemory, dictionaryapi e o proxy
+`/__/auth/iframe` em uma execução, com `PASS`/`WARN`/`FAIL` e código de saída 1
+quando algo essencial quebra (bom para rodar antes/depois de um deploy).
+
+```bash
+node scripts/check-apis.mjs                 # só checks gratuitos
+node scripts/check-apis.mjs --with-tts      # + TTS (gasta cota do Gemini/TikTok)
+node scripts/check-apis.mjs --stt-file=fala.webm   # + STT real (grave 2–3 s)
+
+# apontando para o servidor local
+node scripts/check-apis.mjs --base-url=http://localhost:3000 --site=http://localhost:3000
+```
+
+Flags: `--base-url`, `--site`, `--origin`, `--with-tts`, `--stt-file`,
+`--timeout`. O check de STT real valida o parâmetro novo do servidor: transcrição
+vazia agora responde `502` (antes vinha `200` com `transcript: ""`).
+
 ## Atualizar o frontend
 
 ```powershell

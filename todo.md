@@ -262,10 +262,14 @@ dia errado nem continuar gravando áudio.
 - Aceite: navegação completa por teclado; leitor de tela anuncia resultado e
   erros; texto selecionável.
 
-### [ ] 2.7 Markup e estado do Settings (médio)
-- [ ] **2.7a** Remover a duplicação de `blindMaxErrorsBeforeReveal` e
+### [x] 2.7 Markup e estado do Settings (médio)
+- [x] **2.7a** Remover a duplicação de `blindMaxErrorsBeforeReveal` e
   `blindSpeakingOnFullSentence` (`SettingsModal.tsx:823-915` e `:1580-1689`),
   extraindo um `<BlindSpeakingControls>` renderizado uma vez.
+  → Resolvido sem subcomponente: o bloco da aba **Texto & Tema** foi removido e
+  no lugar ficou um atalho para **Etapas**, que é a fonte única da regra (a aba
+  de etapas fica ao lado do card `speak_blind_en`, como o `plano-notas.md` item 9
+  decidiu).
 - [x] **2.7b** “Restaurar Padrões” (`SettingsModal.tsx:2158-2197`) omite
   `themeMode`, `studyViewMode`, `showConnectedSpeech`, `dailyGoalSentences`,
   `practiceDaysGoal` → usar `DEFAULT_SETTINGS` completo (ou separar “Áudio/Fala”
