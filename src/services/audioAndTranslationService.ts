@@ -62,6 +62,8 @@ export interface TtsVoiceHubOptions {
   geminiVoiceName?: GeminiVoiceName;
   geminiVoiceStyle?: GeminiVoiceStyle;
   ttsCacheEnabled?: boolean;
+  /** Explicit playback rate that overrides the user speed (slow-listening step). */
+  absolutePlaybackRate?: number;
 }
 
 export interface SystemVoiceOption {
@@ -457,7 +459,8 @@ function playSingleBrowserSpeechAttempt(
   ttsSpeedPt: number,
   speedMultiplier: number,
   expectedGen: number,
-  isRetryAttempt: boolean
+  isRetryAttempt: boolean,
+  absoluteRate?: number
 ): Promise<boolean> {
   return new Promise(resolve => {
     if (
@@ -491,7 +494,7 @@ function playSingleBrowserSpeechAttempt(
     };
 
     const isShortWord = !spokenText.includes(' ');
-    let rate = getEffectiveSpeed(lang, ttsSpeedEn, ttsSpeedPt, speedMultiplier);
+    let rate = getEffectiveSpeed(lang, ttsSpeedEn, ttsSpeedPt, speedMultiplier, absoluteRate);
     if (isShortWord && spokenText.length <= 3) {
       rate = Math.max(0.84, Math.min(1.15, rate));
     }
@@ -659,7 +662,8 @@ async function playBrowserSpeech(
   ttsSpeedEn: number,
   ttsSpeedPt: number,
   speedMultiplier = 1.0,
-  expectedGen = audioCancelGeneration
+  expectedGen = audioCancelGeneration,
+  absoluteRate?: number
 ): Promise<boolean> {
   const spokenText = normalizeUtteranceText(text, lang);
   if (!spokenText || audioCancelGeneration !== expectedGen) return false;
@@ -683,7 +687,8 @@ async function playBrowserSpeech(
       ttsSpeedPt,
       speedMultiplier,
       expectedGen,
-      false
+      false,
+      absoluteRate
     );
 
     if (!chunkOk && audioCancelGeneration === expectedGen) {
@@ -697,7 +702,8 @@ async function playBrowserSpeech(
         ttsSpeedPt,
         speedMultiplier,
         expectedGen,
-        true
+        true,
+        absoluteRate
       );
     }
 
@@ -898,7 +904,8 @@ async function playOnlineTts(
   ttsSpeedEn: number,
   ttsSpeedPt: number,
   speedMultiplier = 1.0,
-  expectedGen = audioCancelGeneration
+  expectedGen = audioCancelGeneration,
+  absoluteRate?: number
 ): Promise<boolean> {
   if (typeof window === 'undefined' || audioCancelGeneration !== expectedGen) {
     return false;
@@ -916,7 +923,8 @@ async function playOnlineTts(
     ttsEngine: 'online',
     ttsSpeedEn,
     ttsSpeedPt,
-    speedMultiplier
+    speedMultiplier,
+    absoluteRate
   });
 
   for (const chunk of chunks) {
@@ -1134,7 +1142,8 @@ async function playServerNeuralTts(
     ttsSpeedEn,
     ttsSpeedPt,
     geminiVoiceStyle: voiceStyle,
-    speedMultiplier
+    speedMultiplier,
+    absoluteRate: options?.absolutePlaybackRate
   });
 
   if (cacheEnabled && ttsAudioMemoryCache.has(cacheKey)) {
@@ -1285,7 +1294,8 @@ export async function speakTextUniversal(
       ttsSpeedEn,
       ttsSpeedPt,
       speedMultiplier,
-      startGen
+      startGen,
+      options?.absolutePlaybackRate
     );
   }
 
@@ -1297,15 +1307,30 @@ export async function speakTextUniversal(
       ttsSpeedEn,
       ttsSpeedPt,
       speedMultiplier,
-      startGen
+      startGen,
+      options?.absolutePlaybackRate
     );
   }
   return success && audioCancelGeneration === startGen;
 }
 
+export interface VoiceHubCooldowns {
+  /** Epoch ms do relógio do servidor (evita depender do relógio do navegador). */
+  serverNow: number;
+  geminiTtsUntil: number | null;
+  geminiBreakerUntil: number | null;
+  geminiTtsModels: Record<string, number | null>;
+}
+
 export interface VoiceHubProviderStatus {
   gemini: boolean;
   googleStream: boolean;
+  cooldowns?: VoiceHubCooldowns;
+  stt?: {
+    lastOutcome: 'ok' | 'empty' | 'error' | 'unknown';
+    lastOutcomeAt: number | null;
+    lastProvider: string | null;
+  };
 }
 
 export async function fetchVoiceHubServerStatus(): Promise<VoiceHubProviderStatus> {
@@ -1314,9 +1339,32 @@ export async function fetchVoiceHubServerStatus(): Promise<VoiceHubProviderStatu
     if (res.ok) {
       const data = await res.json();
       if (data && data.providers) {
+        const rawCooldowns = data.cooldowns;
+        let cooldowns: VoiceHubCooldowns | undefined;
+        if (rawCooldowns && typeof rawCooldowns === 'object') {
+          cooldowns = {
+            serverNow: Number(rawCooldowns.serverNow) || Date.now(),
+            geminiTtsUntil: Number(rawCooldowns.geminiTtsUntil) || null,
+            geminiBreakerUntil: Number(rawCooldowns.geminiBreakerUntil) || null,
+            geminiTtsModels:
+              rawCooldowns.geminiTtsModels && typeof rawCooldowns.geminiTtsModels === 'object'
+                ? rawCooldowns.geminiTtsModels
+                : {}
+          };
+        }
+        const rawStt = data.stt;
         return {
           gemini: Boolean(data.providers.gemini),
-          googleStream: Boolean(data.providers.googleStream ?? true)
+          googleStream: Boolean(data.providers.googleStream ?? true),
+          cooldowns,
+          stt:
+            rawStt && typeof rawStt === 'object'
+              ? {
+                  lastOutcome: rawStt.lastOutcome || 'unknown',
+                  lastOutcomeAt: Number(rawStt.lastOutcomeAt) || null,
+                  lastProvider: rawStt.lastProvider ? String(rawStt.lastProvider) : null
+                }
+              : undefined
         };
       }
     }
@@ -1342,33 +1390,67 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+export type SttFailureReason = 'timeout' | 'network' | 'http_error' | 'empty_transcript';
+
+export interface SttCallFailure {
+  reason: SttFailureReason;
+  /** Status HTTP quando a falha veio do servidor. */
+  status?: number;
+  /** Mensagem em pt-BR já pronta para o usuário (quando o servidor mandou). */
+  serverMessage?: string;
+}
+
 export async function evaluateAudioWithCloudStt(
   audioBlob: Blob,
   targetSentence: string,
   provider: SttProvider = 'gemini_stt',
-  evaluatePronunciation = true
+  evaluatePronunciation = true,
+  onFailure?: (failure: SttCallFailure) => void
 ): Promise<AiPronunciationFeedback | null> {
   try {
     if (!audioBlob || audioBlob.size < 100) return null;
     const audioBase64 = await blobToBase64(audioBlob);
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 7500);
-    const res = await fetch(apiUrl('/api/voice-hub/stt'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        audioBase64,
-        mimeType: audioBlob.type || 'audio/webm',
-        targetSentence,
-        provider,
-        evaluatePronunciation
-      }),
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    if (!res.ok) return null;
+    // O servidor para em 12 s; o cliente espera um pouco mais para receber o
+    // erro em JSON (504) em vez de abortar sem mensagem.
+    const timeoutId = setTimeout(() => controller.abort(), 13_000);
+    let res: Response;
+    try {
+      res = await fetch(apiUrl('/api/voice-hub/stt'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          audioBase64,
+          mimeType: audioBlob.type || 'audio/webm',
+          targetSentence,
+          provider,
+          evaluatePronunciation
+        }),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+    if (!res.ok) {
+      let serverMessage: string | undefined;
+      try {
+        const payload = await res.json();
+        if (payload && typeof payload.error === 'string') serverMessage = payload.error;
+      } catch {
+        // resposta sem JSON: mantém a mensagem genérica
+      }
+      onFailure?.({ reason: 'http_error', status: res.status, serverMessage });
+      return null;
+    }
     const data = await res.json();
-    if (!data || typeof data.transcript !== 'string') return null;
+    if (!data || typeof data.transcript !== 'string') {
+      onFailure?.({ reason: 'empty_transcript' });
+      return null;
+    }
+    if (!data.transcript.trim()) {
+      onFailure?.({ reason: 'empty_transcript' });
+      return null;
+    }
     const normalizedTranscript = normalizeSpokenTranscriptNumbers(
       data.transcript,
       targetSentence
@@ -1382,7 +1464,9 @@ export async function evaluateAudioWithCloudStt(
       focusWords: Array.isArray(data.focusWords) ? data.focusWords : [],
       providerUsed: String(data.providerUsed || provider)
     };
-  } catch {
+  } catch (error) {
+    const aborted = String((error as any)?.name || '') === 'AbortError';
+    onFailure?.({ reason: aborted ? 'timeout' : 'network' });
     return null;
   }
 }
