@@ -162,7 +162,7 @@ test('resolveSpeakErrorFeedbackPlan emits at most one deterministic audio plan p
   assert.equal(silentReveal.speakLang, null);
 });
 
-test('getVoiceCompatibilitySummary reflects connected Voice Hub engines & Texto, Tema & Regras settings', () => {
+test('getVoiceCompatibilitySummary reflects connected Voice Hub engines & Regras settings', () => {
   const summaryDefault = getVoiceCompatibilitySummary(DEFAULT_SETTINGS);
   assert.equal(summaryDefault.usesGeminiTts, true);
   assert.equal(summaryDefault.usesSystemVoicePicker, false);

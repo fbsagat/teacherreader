@@ -56,6 +56,18 @@ Notas da Fase C (itens 9 e 8):
   aprovada): extração dos subcomponentes de aba, resumo lateral "Como seu treino
   vai rodar" e rodapé fixo de Configurações.
 
+> **Revisão posterior do item 9 (2026-11-18) — vale o que está aqui, não os 4
+> itens acima:** a aba `text_theme` ("Texto & Tema") foi **dividida em duas**,
+> resultando em **5 abas**: `presets` (Fluxo), `steps` (Etapas), `voice_ai`
+> (Voz & IA), `rules` (Regras: velocidades, tolerância, ajuda ao errar, mãos
+> livres) e `appearance` (Aparência: tema e tamanho do texto). `text_theme`
+> deixou de existir. O toggle de mãos livres, que existia como checkbox **e**
+> como botão no mesmo modal, virou um único `role="switch"` em Regras. Os
+> subcomponentes de aba **foram extraídos** para `src/components/settings/`, os
+> rótulos/faixas para `src/utils/settingsUi.ts` e a cirurgia de listas para
+> `src/utils/cardSequenceEdits.ts` (ambos com testes). Detalhes em
+> `todo.md` §5.6 e `AGENTS.md` §"Settings modal".
+
 Notas da Fase B (desvios):
 
 - O CTA de avanço virou **um botão único dentro da `#sentenceStepOrderBar`**
@@ -619,6 +631,10 @@ Reorganização das 4 abas **aprovada**:
 da aba de texto/tema é **removido**; fica só em Etapas, ao lado do card
 `speak_blind_en`. A ordem dos cards visuais continua em Etapas.
 
+> **Atualização (2026-11-18):** esta decisão de 4 abas foi superada pela
+> execução. A tabela válida hoje é a de 5 abas em `todo.md` §5.6 (Fluxo /
+> Etapas / Voz & IA / Regras / Aparência), com "Texto & Tema" dividida.
+
 ---
 
 # 10. APIs conectadas — verificação feita agora
@@ -799,7 +815,7 @@ confirmação.
 | 3 | Item 7 — conflito 0.7 × etapa lenta | **Normal 0.7x e etapa lenta 0.6x**, renomeando os rótulos para "Ouvir EN 0.6x". |
 | 4 | Item 7 — alcance dos padrões | **Só instalações novas e "Restaurar Padrões".** Usuários existentes mantêm os valores salvos; nenhuma migração forçada. |
 | 5 | Item 8 — layout desktop | **Revisado em 2026-11-17 durante a revisão visual: cards empilhados de cima para baixo** (era "duas colunas" na aprovação inicial). Centralização horizontal mantida; dock de ações continua fixo no rodapé; mobile inalterado. |
-| 6 | Item 9 — abas de Configurações | **Presets / Etapas / Voz & IA / Texto & Tema**, com remoção do bloco duplicado do "Falar Sem Inglês". |
+| 6 | Item 9 — abas de Configurações | **Revisado em 2026-11-18: Fluxo / Etapas / Voz & IA / Regras / Aparência** (5 abas; `text_theme` dividida em Regras + Aparência). O bloco duplicado do "Falar Sem Inglês" continua removido e vive só em Etapas. |
 
 ## Consequências diretas no plano
 

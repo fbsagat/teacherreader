@@ -48,6 +48,14 @@ ShadowReader / Teacher Reader: bilingual EN→PT-BR reading + shadowing app. Rea
 4. Migrate old saved settings in `normalizeSettings` (`src/utils/settingsNormalizer.ts`) if the new card changes `cardSequence` defaults.
 5. Render the stage in `App.tsx` (engine FSM) and in the Settings preset UI.
 
+## Settings modal
+
+`src/components/SettingsModal.tsx` is only the shell (state, header summary, tabs, footer). One subject per tab, one file per panel under `src/components/settings/`: `SettingsPresetsPanel` (Fluxo), `SettingsStepsPanel` (Etapas), `SettingsVoicePanel` (Voz & IA), `SettingsRulesPanel` (Regras), `SettingsAppearancePanel` (Aparência). Shared building blocks live in `settings/SettingsPrimitives.tsx` (`SettingsSection`, `SettingsToggle`, `SettingsSegmented`, `SettingsSlider`) and `settings/OrderedListEditor.tsx` (used by both the step list and the visual card list).
+
+- Tab metadata, labels/ranges (`describeSpeedEn`, `clampFontScale`, `BLIND_REVEAL_OPTIONS`, …) belong in `src/utils/settingsUi.ts`; move/repeat/remove rules and the legacy-flag sync belong in `src/utils/cardSequenceEdits.ts`. Both are pure and tested — extend them instead of adding labels or list surgery back into the components.
+- The "add step" chips are generated from `STEP_CARD_META` via `getAddableStepGroups()`, so a new card type shows up automatically (no hardcoded group arrays).
+- Keep DOM ids stable (`cfg*`, `btn*`, `tabSettings*`) when moving markup between files; also keep the duplicate-free rule: each setting is rendered exactly once (the blind-speaking rules live only in Etapas, hands-free only in Regras).
+
 ## Conventions / quirks
 
 - `@/*` maps to the repo root, not `src/`; most imports are relative.

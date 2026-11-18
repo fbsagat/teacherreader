@@ -276,7 +276,7 @@ const STT_STRICTNESS_LABELS: Record<SttStrictnessMode, string> = {
 
 /**
  * Computes a synchronized compatibility summary connecting the 'Voz & IA' hub
- * settings with 'Texto, Tema & Regras' settings.
+ * settings with the 'Regras' and 'Aparência' panels.
  */
 export function getVoiceCompatibilitySummary(
   settings: PedagogicalSettings

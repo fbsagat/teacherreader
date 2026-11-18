@@ -602,13 +602,43 @@ Hoje não existe um único `console.error` no projeto — falhas são `catch {}`
 - [ ] Extrair `useShadowingEngine` + `useSpeechCapture` de `App.tsx` (6.584
   linhas), mantendo regras puras em `src/utils/`. Facilita corrigir 1.5/1.6/2.3
   e reduz risco de regressão.
-- [ ] Remover exports mortos (`getPresetById`, `getStudyExecutionMode`,
+- [ ] Remover exports mortos (`getStudyExecutionMode`,
   `getHandsFreeEffectiveMaxAttempts`, `getApiBaseUrl` público).
 - [ ] Alinhamento PT/EN depende de vocabulário escrito à mão
   (`EN_TO_PT_ANCHOR_MAP`, `EN_PRENOMINAL_MODIFIERS` com `barista`,
   `cobblestone`, `bioluminescent`) → documentar como heurística calibrável.
 - [ ] SM-2 usa EF anterior em vez do atualizado (`shadowing.ts:2599-2609`) —
   desvio pequeno e determinístico; decidir se corrige.
+
+### [x] 5.6 Configurações reorganizadas em 5 abas + helpers puros
+Estrutura aplicada (não reabrir sem decisão nova):
+| Aba | Conteúdo |
+|---|---|
+| **Fluxo** (`presets`) | 5 modelos prontos, chip "✓ Em uso" e atalho para personalizar |
+| **Etapas** (`steps`) | ordem das etapas + cards da tela + regras do "Falar Sem Inglês" |
+| **Voz & IA** (`voice_ai`) | TTS, timbre/estilo, vozes do sistema, STT e calibração em "Avançado" |
+| **Regras** (`rules`) | velocidades, tolerância, ajuda ao errar e mãos livres |
+| **Aparência** (`appearance`) | tema e tamanho do texto |
+
+- Aba `text_theme` dividida em `rules` + `appearance`: nenhum controle de regra
+  divide espaço com tema/fonte. `text_theme` deixa de existir (App só usava
+  `presets`/`steps`/`voice_ai`).
+- Duplicações removidas: o toggle de mãos livres existia como checkbox **e**
+  como botão no mesmo modal; agora é um único `role="switch"` (`#cfgAutoHandsFree`)
+  em Regras. O bloco do blind continua só em Etapas.
+- `SettingsModal.tsx` virou shell (~430 linhas, era ~2.1k); cada aba é um
+  componente em `src/components/settings/`, com primitivas compartilhadas
+  (`SettingsSection`, `SettingsToggle`, `SettingsSegmented`, `SettingsSlider`,
+  `OrderedListEditor`, `SettingsTabsNav` com setas/Home/End).
+- Helpers puros novos (com teste): `src/utils/settingsUi.ts` (metadados das
+  abas, `resolveSettingsTabId`, faixas/labels de velocidade, tolerância, fonte,
+  opções de revelação do blind) e `src/utils/cardSequenceEdits.ts`
+  (`moveOrderItem`, `duplicateOrderItem`, `removeOrderItem`, `appendOrderItem`,
+  `buildOccurrenceInfo`, `buildLegacyFlagsForSequence`).
+- `getAddableStepGroups()` em `cardSequencePresets.ts`: os chips "adicionar
+  etapa" passam a ser gerados de `STEP_CARD_META` (fim das 3 listas hardcoded).
+- Ids (`cfg*`, `btn*`, `tabSettings*`) preservados; smoke render sem ids
+  duplicados e sem `tabSettingsTextTheme` órfão.
 
 ---
 

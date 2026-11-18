@@ -161,6 +161,42 @@ export function isChallengeStepCard(step: StudyStepCardType): boolean {
   );
 }
 
+export interface StepCategoryMeta {
+  id: StepCategory;
+  label: string;
+  /** Icon used in the "add step" chip group header. */
+  icon: string;
+}
+
+/** Ordered groups used by the "adicionar etapa" chips in Settings. */
+export const STEP_CATEGORY_META: StepCategoryMeta[] = [
+  { id: 'audio', label: 'Áudio & revisão', icon: '🔊' },
+  { id: 'speak', label: 'Fala', icon: '🎤' },
+  { id: 'review', label: 'Revisão', icon: '🔤' },
+  { id: 'challenge', label: 'Desafios', icon: '🏆' }
+];
+
+export function getStepCardsByCategory(category: StepCategory): StudyStepCardType[] {
+  return (Object.keys(STEP_CARD_META) as StudyStepCardType[]).filter(
+    type => STEP_CARD_META[type].category === category
+  );
+}
+
+/**
+ * Groups every addable study step by category, in display order. Keeps the
+ * Settings chip rows generated from `STEP_CARD_META` instead of hardcoded
+ * arrays that drift when a new card type is added.
+ */
+export function getAddableStepGroups(): {
+  category: StepCategoryMeta;
+  steps: StepCardMeta[];
+}[] {
+  return STEP_CATEGORY_META.map(category => ({
+    category,
+    steps: getStepCardsByCategory(category.id).map(type => STEP_CARD_META[type])
+  })).filter(group => group.steps.length > 0);
+}
+
 export interface VisualCardMeta {
   type: VisualCardType;
   shortLabel: string;
